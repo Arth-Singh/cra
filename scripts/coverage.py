@@ -86,7 +86,8 @@ def core_coverage(failures):
                 for b in sorted(glob.glob(os.path.join(bin_path, pattern, "Contents/MacOS/*"))) if not b.endswith(".dSYM")]
     if not binaries:
         sys.exit(f"coverage: no CraCore test bundle (*Tests.xctest) in {bin_path}")
-    binary = binaries[0]
+    # A reused .build can hold both names; the newest is the one this run built.
+    binary = max(binaries, key=os.path.getmtime)
     return lcov_lines(run(["xcrun", "llvm-cov", "export", "-format=lcov", "-instr-profile",
                            os.path.join(codecov, "default.profdata"), binary]))
 
