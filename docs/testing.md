@@ -123,6 +123,11 @@ is a text file; the invariants come for free.
 which half each window draws (`cra://debug?themeShown=<label>`): an Auto space must switch its
 window content and sidebar both ways, and a Light one must not (#155).
 
+`page-probes` counts the nodes taken out of a fixture page while Cra's page probes read its
+background and theme colours (`cra://debug?pageColors` logs what they reported): none on a page
+with a background, one canvas read on a transparent page that stays loading. It runs Cra with
+`--disable-backgrounding-occluded-windows`, since a covered window gets no frames.
+
 `fullscreen` takes over a Space and runs only with `CRA_SCENARIO_SCREEN=1` (CI does).
 `CRA_FLAGS=backdrop=material` runs any scenario on the sidebar's `NSVisualEffectView` path
 instead of the private `CABackdropLayer` one (`FeatureFlags`); nightly runs both, so a macOS

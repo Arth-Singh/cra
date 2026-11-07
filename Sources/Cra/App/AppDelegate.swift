@@ -883,6 +883,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                 CraLog.note("zoom level \(main.currentBrowser?.zoomLevel() ?? .nan), keys go to \(keys)")
                 return
             }
+            // pageColors: what the shown tab's page probes last reported (CraCEF's kThemeColorProbe, kBackgroundProbe).
+            if dict["pageColors"] != nil {
+                let rt = main.browsers.visibleRuntime
+                CraLog.note("page colours theme=\(rt?.themeColor ?? "-") background=\(rt?.backgroundColor ?? "-")")
+                return
+            }
             // tidy: the divider's Tidy on the window's space, without hovering it; undoTidy: ⌘Z's.
             if dict["tidy"] != nil { TidyTabsService.shared.tidy(store.focusedSpace(window: main.windowID).id, store: store); return }
             if dict["undoTidy"] != nil { _ = store.undoTidy(); return }
