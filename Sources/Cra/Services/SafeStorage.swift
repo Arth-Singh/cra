@@ -34,17 +34,35 @@ enum SafeStorage {
     private static let databases = ["Cookies", "Extension Cookies", "Safe Browsing Cookies", "Login Data",
                                     "Login Data For Account", "Web Data", "Account Web Data"]
 
-    /// Called from main.swift before Chromium starts. Only migrates when `profileIsFree`
-    /// (no other Cra has the databases open).
-    static func prepare(profileIsFree: Bool) {
-        if FileManager.default.fileExists(atPath: marker.path) {
-            usesKeychain = true
-            key = keychainSecret().map(ChromiumCrypto.key(fromSecret:))
-            if key == nil { NSLog("Cra: no secret from the \(service) Keychain item") }
-            return
+    /// Called from main.swift before Chromium starts, which starts only on `.start`
+    /// (SafeStorageStart). Only migrates when `profileIsFree` (no other Cra has the databases open).
+    static func prepare(profileIsFree: Bool) -> SafeStorageStart {
+        let profileUsesKeychain = FileManager.default.fileExists(atPath: marker.path)
+        var secret: String?
+        let decision = SafeStorageStart.decide(profileUsesKeychain: profileUsesKeychain,
+                                               frameworkUsesCraItem: { frameworkUsesCraItem },
+                                               lookup: {
+                                                   let found = lookupSecret()
+                                                   secret = found.secret
+                                                   return found.lookup
+                                               })
+        guard profileUsesKeychain else {
+            migrateToKeychain(profileIsFree: profileIsFree)
+            return decision
         }
+        guard decision == .start, let secret else {
+            NSLog("Cra: Chromium does not start without the \(service) secret: \(decision)")
+            return decision
+        }
+        usesKeychain = true
+        key = ChromiumCrypto.key(fromSecret: secret)
+        return .start
+    }
+
+    /// The first launch of a signed Cra moves a mock-keychain profile to the Keychain secret.
+    private static func migrateToKeychain(profileIsFree: Bool) {
         key = mockKey
-        guard profileIsFree, isSignedByTeam, frameworkUsesCraItem, let secret = keychainSecret() else { return }
+        guard profileIsFree, isSignedByTeam, frameworkUsesCraItem, let secret = secretOrNew() else { return }
         let newKey = ChromiumCrypto.key(fromSecret: secret)
         guard migrate(to: newKey) else { return }
         try? FileManager.default.createDirectory(at: AppPaths.chromiumCache, withIntermediateDirectories: true)
@@ -53,19 +71,25 @@ enum SafeStorage {
         key = newKey
     }
 
-    /// The item's secret, made the way Chromium makes one (16 random bytes, base64) when
-    /// there is none yet. Cra creates it, so macOS lets Cra read it without asking.
-    private static func keychainSecret() -> String? {
+    /// The item's secret and what the Keychain answered. It never makes the item: a profile on
+    /// the Keychain was encrypted with the old secret, which a new one cannot decrypt.
+    private static func lookupSecret() -> (lookup: SafeStorageStart.Lookup, secret: String?) {
         let query: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
                                     kSecAttrAccount as String: account, kSecReturnData as String: true,
                                     kSecMatchLimit as String: kSecMatchLimitOne]
         var result: AnyObject?
         let status = SecItemCopyMatching(query as CFDictionary, &result)
-        if status == errSecSuccess, let data = result as? Data { return String(data: data, encoding: .utf8) }
-        guard status == errSecItemNotFound else {
-            NSLog("Cra: reading the \(service) Keychain item failed (\(status))")
-            return nil
-        }
+        let secret = status == errSecSuccess ? (result as? Data).flatMap { String(data: $0, encoding: .utf8) } : nil
+        let lookup = SafeStorageStart.Lookup(status: status, hasSecret: secret != nil)
+        if case .failed(let failure) = lookup { NSLog("Cra: reading the \(service) Keychain item failed (\(failure))") }
+        return (lookup, secret)
+    }
+
+    /// For the migration: the item's secret, made the way Chromium makes one (16 random bytes,
+    /// base64) when there is none yet. Cra creates it, so macOS lets Cra read it without asking.
+    private static func secretOrNew() -> String? {
+        let found = lookupSecret()
+        guard found.lookup == .missing else { return found.secret }
         var bytes = [UInt8](repeating: 0, count: 16)
         guard SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes) == errSecSuccess else { return nil }
         let secret = Data(bytes).base64EncodedString()
@@ -92,16 +116,40 @@ enum SafeStorage {
         return (info as? [String: Any])?[kSecCodeInfoTeamIdentifier as String] is String
     }
 
-    /// A framework that still looks for "Chromium Safe Storage" would make its own secret
-    /// and lose everything this migration re-encrypts.
+    /// A framework that still looks for "Chromium Safe Storage" would make its own secret, and
+    /// Chromium would then delete every value encrypted with Cra's. The file is read once per
+    /// framework file (SafeStorageStart.needsFrameworkScan); the defaults keep the one that passed.
     private static var frameworkUsesCraItem: Bool {
         guard let url = Bundle.main.privateFrameworksURL?
-                .appendingPathComponent("Chromium Embedded Framework.framework/Chromium Embedded Framework"),
-              let data = try? Data(contentsOf: url, options: .alwaysMapped) else { return false }
+                .appendingPathComponent("Chromium Embedded Framework.framework/Chromium Embedded Framework") else { return false }
+        let current = frameworkFile(at: url)
+        let verified = UserDefaults.standard.data(forKey: verifiedFrameworkKey)
+            .flatMap { try? JSONDecoder().decode(SafeStorageStart.FrameworkFile.self, from: $0) }
+        guard SafeStorageStart.needsFrameworkScan(current: current, verified: verified) else { return true }
+        guard frameworkNamesCraItem(url) else { return false }
+        if let current, let data = try? JSONEncoder().encode(current) {
+            UserDefaults.standard.set(data, forKey: verifiedFrameworkKey)
+        }
+        return true
+    }
+
+    private static let verifiedFrameworkKey = "safeStorageVerifiedFramework"
+
+    private static func frameworkNamesCraItem(_ url: URL) -> Bool {
+        guard let data = try? Data(contentsOf: url, options: .alwaysMapped) else { return false }
         let name = Array("\(service)\0".utf8)
         let found = data.withUnsafeBytes { memmem($0.baseAddress, $0.count, name, name.count) != nil }
         if !found { NSLog("Cra: Chromium Embedded Framework does not use \(service); run scripts/fetch-cef.sh") }
         return found
+    }
+
+    /// stat(2), so a symlink counts as the file it points to.
+    private static func frameworkFile(at url: URL) -> SafeStorageStart.FrameworkFile? {
+        var info = stat()
+        guard stat(url.path, &info) == 0 else { return nil }
+        return SafeStorageStart.FrameworkFile(inode: UInt64(info.st_ino), size: Int64(info.st_size),
+                                              modifiedSeconds: Int64(info.st_mtimespec.tv_sec),
+                                              modifiedNanoseconds: Int64(info.st_mtimespec.tv_nsec))
     }
 
     /// Re-encrypts every mock-keychain value in every profile and the import's staged
