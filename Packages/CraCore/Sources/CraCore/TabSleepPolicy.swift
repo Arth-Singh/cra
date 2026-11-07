@@ -39,13 +39,86 @@ public struct TabSleepPolicy: Equatable, Sendable {
     /// A pinned tab that a split pane copied (Arc): its page sleeps at once, the copy shows it.
     public static let splitCopy = TabSleepPolicy(hiddenFor: 0, keepsRecentTabs: false, limit: 1, reason: .splitCopy)
 
+    /// At macOS's critical level (GitHub #237): a third of the pages a pressure sweep could close,
+    /// and at least the warning level's 3, hidden longest first over every window. A burst of 40
+    /// hidden pages then drains in 3 sweeps; at 3 a sweep it took 13, one every 2 minutes, and the
+    /// 15-minute clock closed them first while a 16 GB Mac swapped.
+    public static func criticalMemoryPressure(candidates: Int) -> TabSleepPolicy {
+        var policy = memoryPressure
+        policy.limit = max(memoryPressure.limit ?? 0, (candidates + 2) / 3)
+        return policy
+    }
+
     /// macOS reports a level for a while after pages close, so a sweep waits this long for the
     /// last one to tell before taking more.
     public static let pressureSweepInterval: TimeInterval = 90
+    /// At critical a sweep doesn't wait for the last one to tell: every minute's pass sweeps. Under
+    /// 60 s, so the pass's own jitter doesn't skip one (90 s skipped every second pass).
+    public static let criticalPressureSweepInterval: TimeInterval = 55
 
-    /// Whether the minute's pass sweeps for memory pressure.
-    public static func sweepsForPressure(_ pressure: PerfSystemSample.Pressure, enabled: Bool, lastSweep: Date?, now: Date) -> Bool {
-        enabled && pressure.isShort && lastSweep.map { now.timeIntervalSince($0) >= pressureSweepInterval } ?? true
+    /// Whether the minute's pass, or a level macOS just reported, sweeps for memory pressure:
+    /// `pressureSweepInterval` after the last sweep at warning, `criticalPressureSweepInterval` at
+    /// critical, and at once when the level rose to critical since the last sweep (`lastLevel`).
+    public static func sweepsForPressure(_ pressure: PerfSystemSample.Pressure, enabled: Bool, lastSweep: Date?,
+                                         lastLevel: PerfSystemSample.Pressure? = nil, now: Date) -> Bool {
+        guard enabled, pressure.isShort else { return false }
+        guard let lastSweep else { return true }
+        if pressure == .critical, lastLevel != .critical { return true }
+        let wait = pressure == .critical ? criticalPressureSweepInterval : pressureSweepInterval
+        return now.timeIntervalSince(lastSweep) >= wait
+    }
+
+    /// How many pages each window asks when one limit covers every window: the `limit` pages
+    /// hidden longest over all of them. `hiddenAt[w]` is when window w's candidates went out of sight.
+    public static func quotas(_ hiddenAt: [[Date]], limit: Int) -> [Int] {
+        let ranked = hiddenAt.enumerated().flatMap { w, dates in dates.map { ($0, w) } }.sorted { $0 < $1 }
+        var quotas = [Int](repeating: 0, count: hiddenAt.count)
+        for (_, w) in ranked.prefix(max(limit, 0)) { quotas[w] += 1 }
+        return quotas
+    }
+
+    /// One memory-pressure sweep: its policy and each window's limit. At warning 3 pages per window;
+    /// at critical `criticalMemoryPressure` of every window's candidates, the oldest over all of them.
+    /// `hiddenAt[w]` is when window w's candidates went out of sight.
+    public static func pressureSweep(_ level: PerfSystemSample.Pressure, hiddenAt: [[Date]]) -> (policy: TabSleepPolicy, limits: [Int]) {
+        guard level == .critical else { return (memoryPressure, hiddenAt.map { _ in memoryPressure.limit ?? 0 }) }
+        let policy = criticalMemoryPressure(candidates: hiddenAt.reduce(0) { $0 + $1.count })
+        return (policy, quotas(hiddenAt, limit: policy.limit ?? 0))
+    }
+
+    /// What a sweep did, summed over windows, so a sweep that closes nothing says why (#237: two
+    /// sweeps under pressure left no line but "closing up to 3 pages").
+    public struct Sweep: Equatable, Sendable {
+        /// Out of sight for `hiddenFor` and not protected (`candidates(_:visible:protectedRecent:now:)`).
+        public var candidates = 0
+        /// Asked to sleep; each one's discard or refusal has its own line.
+        public var asked = 0
+        /// Held awake before being asked (`Hold`).
+        public var held = 0
+        /// Refused less than BrowserManager's back-off ago, asked again after it.
+        public var waiting = 0
+
+        public init(candidates: Int = 0, asked: Int = 0, held: Int = 0, waiting: Int = 0) {
+            self.candidates = candidates
+            self.asked = asked
+            self.held = held
+            self.waiting = waiting
+        }
+
+        public static func + (a: Sweep, b: Sweep) -> Sweep {
+            Sweep(candidates: a.candidates + b.candidates, asked: a.asked + b.asked, held: a.held + b.held, waiting: a.waiting + b.waiting)
+        }
+
+        /// The sweep's line in cra.log. `limit` is per window at warning, over every window at critical.
+        public func line(level: PerfSystemSample.Pressure, limit: Int, hiddenFor: TimeInterval) -> String {
+            let scope = level == .critical ? "over every window" : "per window"
+            let head = "tab sleep: memory pressure \(level.rawValue), limit \(limit) \(scope)"
+            if candidates == 0 { return "\(head): nothing to close, no page out of sight for \(Int(hiddenFor / 60)) min" }
+            var line = "\(head): asked \(asked) of \(candidates) pages"
+            let kept = [(held, "held awake"), (waiting, "waiting after a refusal")].filter { $0.0 > 0 }.map { "\($0.0) \($0.1)" }
+            if !kept.isEmpty { line += " (\(kept.joined(separator: ", ")))" }
+            return line
+        }
     }
 
     /// A page as tab sleeping sees it: when it went off screen (nil while shown) and when it last

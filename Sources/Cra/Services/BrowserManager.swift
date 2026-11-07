@@ -419,21 +419,27 @@ final class BrowserManager: NSObject, @preconcurrency CraBrowserDelegate {
     /// asking before they close (their own onbeforeunload), in a call (even with the camera and
     /// microphone off) or using a device stay awake, and are asked again only after
     /// `refusalBackoff`; those don't count toward the policy's limit. The log says once why a page
-    /// stays awake.
-    func sleepIdleTabs(_ policy: TabSleepPolicy) {
+    /// stays awake. Returns what the pass did, for the memory-pressure sweep's line in cra.log.
+    @discardableResult
+    func sleepIdleTabs(_ policy: TabSleepPolicy) -> TabSleepPolicy.Sweep {
         let now = clock.now
         let cutoff = now.addingTimeInterval(-policy.hiddenFor)
-        var asked = 0
-        for id in policy.candidates(sleepPages, visible: visibleTabIDs, protectedRecent: protectedRecentTabs, now: now) {
+        let candidates = policy.candidates(sleepPages, visible: visibleTabIDs, protectedRecent: protectedRecentTabs, now: now)
+        var sweep = TabSleepPolicy.Sweep(candidates: candidates.count)
+        for id in candidates {
             guard let rt = runtimes[id] else { continue }
             if let hold = sleepHold(rt, before: cutoff) {
                 passOver(rt, hold)
+                sweep.held += 1
                 continue
             }
             rt.sleepHold = nil
-            guard rt.sleepProbeAfter.map({ $0 <= now }) ?? true else { continue }
-            if let limit = policy.limit, asked >= limit { break }
-            asked += 1
+            guard rt.sleepProbeAfter.map({ $0 <= now }) ?? true else {
+                sweep.waiting += 1
+                continue
+            }
+            if let limit = policy.limit, sweep.asked >= limit { break }
+            sweep.asked += 1
             let b = rt.browser
             let url = b.currentURL
             let navigationRevision = rt.navigationRevision
@@ -464,6 +470,16 @@ final class BrowserManager: NSObject, @preconcurrency CraBrowserDelegate {
                 }
             }
         }
+        return sweep
+    }
+
+    /// When the pages `policy` would ask went out of sight, oldest first, so one limit can cover
+    /// every window (TabSleepPolicy.quotas).
+    func sleepCandidatesHiddenAt(_ policy: TabSleepPolicy) -> [Date] {
+        let pages = sleepPages
+        let hiddenAt = Dictionary(pages.map { ($0.id, $0.hiddenAt) }, uniquingKeysWith: { first, _ in first })
+        return policy.candidates(pages, visible: visibleTabIDs, protectedRecent: protectedRecentTabs, now: clock.now)
+            .compactMap { hiddenAt[$0] ?? nil }
     }
 
     /// Chrome's in-place discard (Cra.discard, which needs WebContentsDiscard). A CEF without it

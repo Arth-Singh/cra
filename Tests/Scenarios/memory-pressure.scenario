@@ -1,0 +1,10 @@
+# A memory-pressure sweep says what it did, also when it closes nothing (#237): two sweeps under
+# pressure left only "closing up to 3 pages per window", and the pages were too new to close.
+seed settings.json {"hasSeenImportPrompt": true, "toolbarDefaultMigrated": true, "showToolbar": false, "tabSleepOnMemoryPressure": true}
+cra://open?url=${PAGE}?n=1
+cra://open?url=${PAGE}?n=2
+expect-log loaded 127\.0\.0\.1
+cra://debug?memoryPressure=critical
+expect-log tab sleep: memory pressure critical, limit 3 over every window: nothing to close, no page out of sight for 5 min
+cra://debug?memoryPressure=warning
+expect-log tab sleep: memory pressure warning, limit 3 per window: nothing to close, no page out of sight for 5 min

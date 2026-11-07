@@ -119,6 +119,68 @@ struct TabSleepPolicyTests {
         #expect([PerfSystemSample.Pressure.normal, .warning, .critical, .unknown].map(\.isShort) == [false, true, true, false])
     }
 
+    /// At critical (#237) a sweep takes a third of the candidates, never fewer than warning's 3,
+    /// with the warning policy's 5-minute floor and reason.
+    @Test func criticalTakesAThird() {
+        let limits = [0, 1, 9, 10, 40, 56].map { TabSleepPolicy.criticalMemoryPressure(candidates: $0).limit }
+        #expect(limits == [3, 3, 3, 4, 14, 19])
+        var expected = TabSleepPolicy.memoryPressure
+        expected.limit = 14
+        #expect(TabSleepPolicy.criticalMemoryPressure(candidates: 40) == expected)
+    }
+
+    /// Critical sweeps every minute's pass (55 s, under the pass's 60) and at once when the level rose
+    /// to it; warning keeps its 90 s, also right after a critical sweep.
+    @Test func criticalSweepCadence() {
+        func sweeps(_ level: PerfSystemSample.Pressure, secondsAgo: Double, last: PerfSystemSample.Pressure) -> Bool {
+            TabSleepPolicy.sweepsForPressure(level, enabled: true, lastSweep: now.addingTimeInterval(-secondsAgo), lastLevel: last, now: now)
+        }
+        #expect(sweeps(.critical, secondsAgo: 60, last: .critical))
+        #expect(sweeps(.critical, secondsAgo: 55, last: .critical))
+        #expect(!sweeps(.critical, secondsAgo: 54, last: .critical))
+        #expect(sweeps(.critical, secondsAgo: 1, last: .warning), "a rise to critical sweeps at once")
+        #expect(!sweeps(.warning, secondsAgo: 60, last: .critical), "a fall to warning waits its 90 s")
+        #expect(!sweeps(.warning, secondsAgo: 89, last: .warning))
+        #expect(sweeps(.warning, secondsAgo: 90, last: .warning))
+        #expect(!TabSleepPolicy.sweepsForPressure(.critical, enabled: false, lastSweep: nil, lastLevel: .warning, now: now))
+        #expect(!TabSleepPolicy.sweepsForPressure(.normal, enabled: true, lastSweep: nil, lastLevel: .critical, now: now))
+    }
+
+    /// One limit over every window: the pages hidden longest, wherever they are.
+    @Test func quotasTakeTheOldestOverEveryWindow() {
+        func ago(_ minutes: Double...) -> [Date] { minutes.map { now.addingTimeInterval(-$0 * 60) } }
+        let windows = [ago(60, 6), ago(50, 40, 30), [], ago(45)]
+        #expect(TabSleepPolicy.quotas(windows, limit: 3) == [1, 1, 0, 1])
+        #expect(TabSleepPolicy.quotas(windows, limit: 5) == [1, 3, 0, 1])
+        #expect(TabSleepPolicy.quotas(windows, limit: 99) == [2, 3, 0, 1])
+        #expect(TabSleepPolicy.quotas(windows, limit: 0) == [0, 0, 0, 0])
+        #expect(TabSleepPolicy.quotas([], limit: 3) == [])
+        #expect(TabSleepPolicy.quotas([ago(10), ago(10)], limit: 1) == [1, 0], "a tie goes to the first window")
+    }
+
+    /// Warning keeps 3 pages per window; critical shares a third of every window's candidates.
+    @Test func pressureSweepPlan() {
+        let windows = [(0..<8).map { now.addingTimeInterval(-Double(600 + $0)) }, (0..<4).map { now.addingTimeInterval(-Double(9000 + $0)) }]
+        let warning = TabSleepPolicy.pressureSweep(.warning, hiddenAt: windows)
+        #expect(warning.policy == .memoryPressure && warning.limits == [3, 3])
+        let critical = TabSleepPolicy.pressureSweep(.critical, hiddenAt: windows)
+        #expect(critical.policy.limit == 4 && critical.limits == [0, 4], "the second window's pages are the oldest")
+        #expect(TabSleepPolicy.pressureSweep(.critical, hiddenAt: []).limits == [])
+    }
+
+    /// A sweep's line says what it asked, and why when it asked nothing (#237).
+    @Test func sweepLine() {
+        let floor = TabSleepPolicy.memoryPressure.hiddenFor
+        #expect(TabSleepPolicy.Sweep().line(level: .warning, limit: 3, hiddenFor: floor)
+            == "tab sleep: memory pressure warning, limit 3 per window: nothing to close, no page out of sight for 5 min")
+        #expect(TabSleepPolicy.Sweep(candidates: 3, held: 2, waiting: 1).line(level: .warning, limit: 3, hiddenFor: floor)
+            == "tab sleep: memory pressure warning, limit 3 per window: asked 0 of 3 pages (2 held awake, 1 waiting after a refusal)")
+        #expect(TabSleepPolicy.Sweep(candidates: 40, asked: 14).line(level: .critical, limit: 14, hiddenFor: floor)
+            == "tab sleep: memory pressure critical, limit 14 over every window: asked 14 of 40 pages")
+        #expect(TabSleepPolicy.Sweep(candidates: 2, asked: 1) + TabSleepPolicy.Sweep(candidates: 3, asked: 2, held: 1, waiting: 0)
+            == TabSleepPolicy.Sweep(candidates: 5, asked: 3, held: 1, waiting: 0))
+    }
+
     /// Why a candidate stays awake without being asked, the first that holds (#214).
     @Test(.bug("https://github.com/VictorKildahl/cra/issues/214")) func holds() {
         let now = Date(timeIntervalSince1970: 10_000), cutoff = now.addingTimeInterval(-900)
