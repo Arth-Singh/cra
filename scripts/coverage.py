@@ -80,7 +80,13 @@ def core_coverage(failures):
     # other lines kept the 0 of a harness that compiles CraCore without running it.
     codecov = os.path.dirname(run(["swift", "test", "--package-path", pkg, "--show-codecov-path"]).strip())
     bin_path = run(["swift", "build", "--package-path", pkg, "--show-bin-path"]).strip()
-    binary = next(b for b in glob.glob(os.path.join(bin_path, "*PackageTests.xctest/Contents/MacOS/*")) if not b.endswith(".dSYM"))
+    # SwiftPM before 6.4 names the bundle CraCorePackageTests.xctest; 6.4 (Xcode 27) names it after
+    # the test target, CraCoreTests.xctest.
+    binaries = [b for pattern in ("*PackageTests.xctest", "*Tests.xctest")
+                for b in sorted(glob.glob(os.path.join(bin_path, pattern, "Contents/MacOS/*"))) if not b.endswith(".dSYM")]
+    if not binaries:
+        sys.exit(f"coverage: no CraCore test bundle (*Tests.xctest) in {bin_path}")
+    binary = binaries[0]
     return lcov_lines(run(["xcrun", "llvm-cov", "export", "-format=lcov", "-instr-profile",
                            os.path.join(codecov, "default.profdata"), binary]))
 

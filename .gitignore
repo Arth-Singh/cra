@@ -1,6 +1,6 @@
 .build/
 build/
-vendor/
+vendor
 *.xcodeproj
 *.xcworkspace
 .DS_Store
