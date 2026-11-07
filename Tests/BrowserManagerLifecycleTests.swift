@@ -547,6 +547,7 @@ enum BrowserManagerLifecycleTests {
         manager.closeAll()
     }
 
+    // promise: #237
     /// A sweep says what it did (#237): its candidates, the pages it asked, the ones held awake or
     /// waiting out a refusal; and when each candidate went out of sight, for a limit over every window.
     @MainActor

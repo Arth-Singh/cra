@@ -364,3 +364,10 @@
 #233   Packages/CraCore/Tests/CraCoreTests/MouseButtonSpaceSwitchTests.swift::backGoesToThePreviousSpaceAndForwardToTheNext  10b4dc8a4a65
 #233   Packages/CraCore/Tests/CraCoreTests/MouseButtonSpaceSwitchTests.swift::otherButtonsDoNotSwitch  07b725a8e6f5
 #233   Tests/Scenarios/mouse-buttons-switch-spaces.scenario  79148e8b3ebb
+#237   Packages/CraCore/Tests/CraCoreTests/TabSleepPolicyTests.swift::criticalSweepCadence  e49aa56158a3
+#237   Packages/CraCore/Tests/CraCoreTests/TabSleepPolicyTests.swift::criticalTakesAThird  a06d901ea4b8
+#237   Packages/CraCore/Tests/CraCoreTests/TabSleepPolicyTests.swift::pressureSweepPlan  8a8ac26755ba
+#237   Packages/CraCore/Tests/CraCoreTests/TabSleepPolicyTests.swift::quotasTakeTheOldestOverEveryWindow  c987de1b3236
+#237   Packages/CraCore/Tests/CraCoreTests/TabSleepPolicyTests.swift::sweepLine  e27571afc440
+#237   Tests/BrowserManagerLifecycleTests.swift::pressureSweepSummaryCase  f63bb91fa828
+#237   Tests/Scenarios/memory-pressure.scenario  697a82f191b2

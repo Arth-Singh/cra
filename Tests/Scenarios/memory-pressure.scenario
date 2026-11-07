@@ -1,5 +1,6 @@
 # A memory-pressure sweep says what it did, also when it closes nothing (#237): two sweeps under
 # pressure left only "closing up to 3 pages per window", and the pages were too new to close.
+# promise: #237
 seed settings.json {"hasSeenImportPrompt": true, "toolbarDefaultMigrated": true, "showToolbar": false, "tabSleepOnMemoryPressure": true}
 cra://open?url=${PAGE}?n=1
 cra://open?url=${PAGE}?n=2
