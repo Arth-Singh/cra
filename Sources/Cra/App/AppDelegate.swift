@@ -102,6 +102,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         installKeyFallbackMonitor()
         installCommandFileWatcher()
         composition.startPeriodicWork { [weak self] in self?.sleepIdleTabs() }
+        observeMemoryPressure()
         logSidebarProblems()
         LiveFolderManager.shared.start(store: store)
         // A restart into an update while the user was away leaves the front app alone.
@@ -218,8 +219,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     /// AppComposition.tabFreezeAfter; `cra://debug?freezeTabs=` shortens it for a test.
     private var freezeAfter = AppComposition.tabFreezeAfter
 
-    /// The last memory-pressure sweep (TabSleepPolicy.sweepsForPressure).
+    /// The last memory-pressure sweep and the level it swept at (TabSleepPolicy.sweepsForPressure).
     private var lastPressureSweep: Date?
+    private var lastPressureSweepLevel: PerfSystemSample.Pressure?
+    /// macOS's memory-pressure events: a level that rises sweeps now, not at the next minute's pass.
+    private var pressureEvents: DispatchSourceMemoryPressure?
 
     /// Settings ▸ Tabs ▸ Tab Cleanup, read every minute so a change counts from the next pass.
     private func sleepIdleTabs() {
@@ -234,13 +238,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     /// "Force tabs out of memory when the Mac is short of memory" (GitHub #153): while macOS
     /// reports memory pressure, the pages hidden longest close, a few per sweep, until it doesn't.
+    /// At critical a third of them per sweep, counted over every window, every minute (#237).
     private func sweepForMemoryPressure(_ pressure: PerfSystemSample.Pressure) {
         let now = composition.clock.now
         guard TabSleepPolicy.sweepsForPressure(pressure, enabled: store.settings.tabSleepOnMemoryPressure,
-                                               lastSweep: lastPressureSweep, now: now) else { return }
+                                               lastSweep: lastPressureSweep, lastLevel: lastPressureSweepLevel, now: now) else { return }
         lastPressureSweep = now
-        CraLog.note("tab sleep: memory pressure \(pressure.rawValue), closing up to \(TabSleepPolicy.memoryPressure.limit ?? 0) pages per window")
-        for w in mainWindows { w.browsers.sleepIdleTabs(.memoryPressure) }
+        lastPressureSweepLevel = pressure
+        let windows = mainWindows
+        let plan = TabSleepPolicy.pressureSweep(pressure, hiddenAt: windows.map { $0.browsers.sleepCandidatesHiddenAt(.memoryPressure) })
+        var sweep = TabSleepPolicy.Sweep()
+        for (w, limit) in zip(windows, plan.limits) {
+            var policy = plan.policy
+            policy.limit = limit
+            sweep = sweep + w.browsers.sleepIdleTabs(policy)
+        }
+        CraLog.note(sweep.line(level: pressure, limit: plan.policy.limit ?? 0, hiddenFor: plan.policy.hiddenFor))
+    }
+
+    /// Sweeps when macOS raises the level (warning, critical) instead of up to a minute later. The
+    /// source delivers on the main queue, so the sweep runs on the main actor like the minute's pass,
+    /// and reads the level the same way.
+    private func observeMemoryPressure() {
+        let source = DispatchSource.makeMemoryPressureSource(eventMask: [.warning, .critical], queue: .main)
+        source.setEventHandler { [weak self] in
+            MainActor.assumeIsolated {
+                self?.sweepForMemoryPressure(PerfSystemSample.pressure(level: PerfSystemSampler.pressureLevel()))
+            }
+        }
+        source.activate()
+        pressureEvents = source
     }
 
     /// Settings > Privacy > "Always use secure connections", live like content blocking.

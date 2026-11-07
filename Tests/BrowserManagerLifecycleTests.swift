@@ -102,6 +102,7 @@ enum BrowserManagerLifecycleTests {
         freezingVoteCase()
         await sleepClockCase()
         await pressureSweepCase()
+        pressureSweepSummaryCase()
         await discardCase()
         await discardedPageLoadCase()
         await sleepCountsCase()
@@ -543,6 +544,35 @@ enum BrowserManagerLifecycleTests {
         expect(ids.map { asleep(manager, $0) } == [false, true, true, true, false, false], "the 3 pages are discarded")
         manager.sleepIdleTabs(.memoryPressure)
         expect(probed()[4] && !probed()[5], "the next sweep takes the next page, not one left 4 minutes ago")
+        manager.closeAll()
+    }
+
+    // promise: #237
+    /// A sweep says what it did (#237): its candidates, the pages it asked, the ones held awake or
+    /// waiting out a refusal; and when each candidate went out of sight, for a limit over every window.
+    @MainActor
+    private static func pressureSweepSummaryCase() {
+        let clock = ManualScheduler()
+        let store = SidebarStore()
+        let manager = BrowserManager(store: store, favicons: FaviconCache(), container: NSView(), clock: clock)
+        let ids = (0..<5).map { store.createTab(url: "https://example.test/summary\($0)").id }
+        let runtimes = ids.map { manager.ensureRuntime(for: $0)! }
+        for (n, rt) in runtimes.enumerated() { rt.hiddenAt = clock.now.addingTimeInterval(-3600 + Double(n) * 60) }
+        runtimes[4].hiddenAt = clock.now.addingTimeInterval(-4 * 60)
+        runtimes[0].sleepProbeAfter = clock.now.addingTimeInterval(60)
+        runtimes[1].browser.isLoading = true
+        expect(manager.sleepCandidatesHiddenAt(.memoryPressure) == runtimes[0...3].compactMap(\.hiddenAt),
+               "the candidates' times are the pages hidden 5 minutes or more, oldest first")
+        var one = TabSleepPolicy.memoryPressure
+        one.limit = 1
+        let sweep = manager.sleepIdleTabs(one)
+        expect(sweep == TabSleepPolicy.Sweep(candidates: 4, asked: 1, held: 1, waiting: 1),
+               "4 candidates: one waiting, one loading, one asked, the last left for the limit")
+        var none = TabSleepPolicy.memoryPressure
+        none.limit = 0
+        expect(manager.sleepIdleTabs(none).asked == 0, "a window whose share is 0 asks nothing")
+        expect(manager.sleepIdleTabs(TabSleepPolicy(hiddenFor: 7200, keepsRecentTabs: false)) == TabSleepPolicy.Sweep(),
+               "no page out of sight long enough: an empty sweep")
         manager.closeAll()
     }
 
