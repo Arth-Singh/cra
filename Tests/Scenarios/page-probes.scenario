@@ -1,0 +1,32 @@
+# Cra's page probes read a page's background and theme colours without changing its DOM. The
+# background probe added an element to the root and took it out again on every frame of a
+# transparent page while it loaded (up to 600 frames), and the theme probe added one to the body
+# twice per load: the page's MutationObservers saw every one, and each cost a style recalc and a
+# relayout. The fixture counts the nodes taken out of it. A covered window gets no frames, so
+# this copy keeps them coming.
+arg --disable-backgrounding-occluded-windows
+# A transparent page that stays loading, with a dark scheme: one canvas read, its colour reported.
+cra://action/appearanceDark
+cra://open?url=file://${FIXTURES}/Pages/probes.html?light-dark,${STALL}
+wait 3
+cra://debug?cdp=Runtime.evaluate&params={"expression":"'lightdark:'+(frames>30)+':'+(removed<=1)+':'+removed"}
+expect-log Cra cdp Runtime.evaluate .*"value":"lightdark:true:true:
+cra://debug?pageColors=1
+expect-log page colours .*background=.121212
+# Loaded, the same page keeps its probe. The scheme flips: the canvas colour is read again.
+cra://open?url=file://${FIXTURES}/Pages/probes.html?light-dark
+expect-log loaded file:
+wait 2
+cra://action/appearanceLight
+wait 1
+cra://debug?pageColors=1
+expect-log page colours .*background=.FFFFFF
+# A page with its own background and a theme colour (behind one that doesn't parse): nothing
+# added, the meta's colour and the root's background reported.
+cra://open?url=file://${FIXTURES}/Pages/probes.html?themed
+wait 3
+cra://debug?cdp=Runtime.evaluate&params={"expression":"'themed:'+removed"}
+expect-log Cra cdp Runtime.evaluate .*"value":"themed:0"
+cra://debug?pageColors=1
+expect-log page colours theme=.40BF40 background=.345678
+cra://action/appearanceAutomatic

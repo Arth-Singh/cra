@@ -1082,12 +1082,22 @@ static NSString* HexFromCSSColor(const std::string& css) {
 // What the page paints behind its content: the root's background, else the body's
 // (CSS propagates it to the canvas), else the canvas colour of the page's color
 // scheme ('' before the document has a root).
+//
+// Only an element in the page resolves the canvas colour for a dark scheme (Chromium 156 gives
+// a 2D canvas and CSS.registerProperty the light one), so an element is added and removed to
+// read it. That happens once per colour scheme, not on every call: the root's color-scheme, the
+// head's <meta name="color-scheme"> (not in the root's computed style) and the preferred scheme
+// decide it. Read on every call, the loading probe below made a DOM mutation the page's
+// MutationObservers saw, a style recalc and a relayout on every frame of a transparent page.
 #define CRA_PAGE_BACKGROUND_FN \
-    "function(){var r=document.documentElement;if(!r)return '';" \
+    "(function(){var dark=matchMedia('(prefers-color-scheme: dark)'),scheme=null,canvas='';" \
     "var bg=function(e){var c=e?getComputedStyle(e).backgroundColor:'';return c&&c!=='transparent'&&c!=='rgba(0, 0, 0, 0)'?c:'';};" \
-    "var c=bg(r)||bg(document.body);" \
-    "if(!c){var d=document.createElement('div');d.style.color='Canvas';r.appendChild(d);c=getComputedStyle(d).color;d.remove();}" \
-    "return c;}"
+    "return function(){var r=document.documentElement;if(!r)return '';" \
+    "var c=bg(r)||bg(document.body);if(c)return c;" \
+    "var m=document.head&&document.head.querySelector('meta[name=\"color-scheme\" i]');" \
+    "var k=getComputedStyle(r).colorScheme+'|'+(m?m.content:'-')+'|'+dark.matches;" \
+    "if(k!==scheme){var d=document.createElement('div');d.style.color='Canvas';r.appendChild(d);canvas=getComputedStyle(d).color;d.remove();scheme=k;}" \
+    "return canvas;};})()"
 
 // Runs a page script through Cra Helper's renderer handler (Sources/CraHelper/main.cc), never
 // through the page's console: Cra writes nothing to a site's DevTools and adds no globals.
@@ -1120,6 +1130,25 @@ static const char kLoadingBackgroundProbe[] =
     "function tick(){try{var c=color();if(c&&c!==last){last=c;send('bg:'+c);}}catch(e){}"
     "if(document.readyState==='loading'&&++n<600)requestAnimationFrame(tick);}"
     "requestAnimationFrame(tick);})";
+
+// Answers "theme:<css colour>": the first <meta name="theme-color"> without a media query whose
+// colour parses, else the body's background, else the root's, else white; again after 1.5 s. A
+// document without a body (an SVG file) answers nothing. An OffscreenCanvas turns the meta's
+// colour into rgb(): an element added to the body did, and the page's MutationObservers saw it
+// twice per load.
+static const char kThemeColorProbe[] =
+    "(function(send){var x;"
+    "function rgb(v){x=x||new OffscreenCanvas(1,1).getContext('2d');"
+    "x.fillStyle='#000';x.fillStyle=v;var a=x.fillStyle;x.fillStyle='#fff';x.fillStyle=v;if(x.fillStyle!==a)return '';"
+    "var h=/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/.exec(a);"
+    "return h?'rgb('+parseInt(h[1],16)+', '+parseInt(h[2],16)+', '+parseInt(h[3],16)+')':a;}"
+    "function probe(){try{if(!document.body)return;var c='';var ms=document.querySelectorAll('meta[name=\"theme-color\"]');"
+    "for(var i=0;i<ms.length;i++){if(!ms[i].getAttribute('media')){c=rgb(ms[i].getAttribute('content')||'');if(c)break;}}"
+    "if(!c){var b=getComputedStyle(document.body).backgroundColor;if(b&&b!=='rgba(0, 0, 0, 0)'&&b!=='transparent'){c=b;}}"
+    "if(!c){var h=getComputedStyle(document.documentElement).backgroundColor;if(h&&h!=='rgba(0, 0, 0, 0)'&&h!=='transparent'){c=h;}}"
+    "if(!c){c='rgb(255, 255, 255)';}"
+    "send('theme:'+c);}catch(e){}}"
+    "probe();setTimeout(probe,1500);})";
 
 // MARK: - Content blocking and app links
 
@@ -1362,16 +1391,7 @@ public:
         if (!o) return;
         [o.delegate browser:o didFinishLoadingURL:NSStringFromCef(frame->GetURL()) title:o.currentTitle
                  statusCode:httpStatusCode];
-        // Ask the page for its theme colour; the answer comes back as "theme:<css colour>".
-        RunPageScript(frame, "",
-            "(function(send){function probe(){try{var c='';var ms=document.querySelectorAll('meta[name=\"theme-color\"]');"
-            "for(var i=0;i<ms.length;i++){if(!ms[i].getAttribute('media')){c=ms[i].getAttribute('content')||'';if(c)break;}}"
-            "if(!c&&document.body){var b=getComputedStyle(document.body).backgroundColor;if(b&&b!=='rgba(0, 0, 0, 0)'&&b!=='transparent'){c=b;}}"
-            "if(!c){var h=getComputedStyle(document.documentElement).backgroundColor;if(h&&h!=='rgba(0, 0, 0, 0)'&&h!=='transparent'){c=h;}}"
-            "if(!c){c='rgb(255, 255, 255)';}"
-            "var d=document.createElement('div');d.style.color=c;document.body.appendChild(d);"
-            "var rgb=getComputedStyle(d).color;d.remove();send('theme:'+rgb);}catch(e){}}"
-            "probe();setTimeout(probe,1500);})");
+        RunPageScript(frame, "", kThemeColorProbe);
         RunPageScript(frame, "bg", kBackgroundProbe);
     }
 

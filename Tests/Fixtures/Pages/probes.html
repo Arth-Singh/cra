@@ -1,0 +1,27 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Probes fixture</title>
+<script>
+  // probes.html?<mode>[,<address>]. mode "transparent" has no background of its own, "light-dark"
+  // adds <meta name="color-scheme" content="light dark">, "themed" has a background and a
+  // theme-color meta that doesn't parse ahead of one that does. With an address (a server that
+  // never answers) the parser waits on a script from it, so the page stays loading.
+  var query = location.search.slice(1).split(','), mode = query[0], stall = query[1];
+  // Nodes something took out of the page: the parser never removes any, Cra's probes must not
+  // add any. Frames counts requestAnimationFrame callbacks while the page loads, so a run where
+  // frames don't come (a covered window) fails instead of passing on nothing.
+  var removed = 0, frames = 0;
+  new MutationObserver(function (records) {
+    records.forEach(function (r) { removed += r.removedNodes.length; });
+  }).observe(document, { childList: true, subtree: true });
+  (function frame() { frames++; if (document.readyState === 'loading') requestAnimationFrame(frame); })();
+  if (mode === 'light-dark') document.write('<meta name="color-scheme" content="light dark">');
+  if (mode === 'themed') {
+    document.write('<meta name="theme-color" content="not-a-colour"><meta name="theme-color" content="hsl(120 50% 50%)">');
+    document.write('<style>html { background: #345678 }</style>');
+  }
+</script>
+<h1>Probes fixture</h1>
+<p>Counts the nodes taken out of this page while Cra's page probes read its background and
+theme colours.</p>
+<script>if (stall) document.write('<script src="' + stall + '/never.js"><\/script>');</script>
