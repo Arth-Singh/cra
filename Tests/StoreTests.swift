@@ -1771,6 +1771,8 @@ enum StoreTests {
     /// never migrates, and with it the harness has no CEF framework, which is refused first.
     @MainActor
     private static func safeStorageGuard() {
+        precondition(AppPaths.supportDir.path.hasPrefix(FileManager.default.temporaryDirectory.path),
+                     "safeStorageGuard runs only on a temporary data folder")
         let marker = AppPaths.chromiumCache.appendingPathComponent("Cra Safe Storage")
         try? FileManager.default.removeItem(at: marker)
         expect(SafeStorage.prepare(profileIsFree: true) == .start, "a profile that never used the Keychain starts")
