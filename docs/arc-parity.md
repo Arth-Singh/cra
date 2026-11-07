@@ -53,7 +53,7 @@ Arc's actions (Settings ▸ Shortcuts, 106 rows) that Cra has no action for:
 | View Archive… / Clear Archive (Archive menu) | — | done |
 | Collapse All Folders / Expand All Folders | — | done |
 | Next Tab / Previous Tab, second binding | ⌘} / ⌘{ | done |
-| Go Back / Go Forward, second binding | ⌘← / ⌘→ | missing |
+| Go Back / Go Forward, second binding | ⌘← / ⌘→ | done (bound since the first version, KeyBindings.swift) |
 | Developer Tools, second binding | F12 | done |
 | Go to last Sidebar Item | ⌘9 | done |
 | Switch to Split View 1–4 | ⌃⇧1…4 | done |
