@@ -362,8 +362,6 @@ final class WebKitBrowser: CraBrowser, WKNavigationDelegate, WKUIDelegate, WKDow
                 logLinkClick(click, action, s, "new tab")
                 return decisionHandler(.cancel, preferences)
             }
-            // A target=_blank link goes on to createWebViewWith, which logs where it went.
-            if action.targetFrame != nil { logLinkClick(click, action, s, "this page") }
             decisionHandler(.allow, preferences)
         }
     }

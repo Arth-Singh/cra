@@ -132,8 +132,9 @@ typedef NS_ENUM(NSInteger, CraLinkWindow) {
 /// A link clicked with ⌘, ⌥, ⇧ or the middle button, and where Cra sent it, for one line in
 /// cra.log: `click` is what the engine reported (WebKit: the keys and the button; Chromium: the
 /// disposition it made of them), `result` where the link went ("Little Window", "new tab in the
-/// background", "Peek", "this page"). A report of a click that went the wrong way then shows what
-/// the engine saw.
+/// background", "Peek", "download"). A report of a click that went the wrong way then shows what
+/// the engine saw. Chromium's pages miss two: a ⌥-click download (Chromium starts it without
+/// asking) and ⇧⌘ on a target=_blank link (the foreground tab a plain click on one makes too).
 - (void)browser:(CraBrowser *)browser handledLinkClick:(NSString *)click toURL:(NSString *)url result:(NSString *)result;
 /// A main-frame navigation (a link, a redirect, history, an address Cra loaded) before its request
 /// goes out; `method` is its HTTP method. Return YES to cancel it here because Cra shows `url` in
