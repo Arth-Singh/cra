@@ -332,6 +332,7 @@ final class LittleWindowController: NSWindowController, NSWindowDelegate, @preco
         positionHostWindow(shell.convert(shell.page.frame, to: nil))
         w.orderFront(nil)
         rejoinPage()
+        if window.isVisible { openTiming?.mark(.pageShown) }
         // The command bar and the spaces popup stay above the page window.
         if commandPanel.parent === window { window.removeChildWindow(commandPanel); window.addChildWindow(commandPanel, ordered: .above) }
     }
@@ -418,12 +419,18 @@ final class LittleWindowController: NSWindowController, NSWindowDelegate, @preco
         window.makeKeyAndOrderFront(nil)
         rejoinPage()
         NSApp.activate(ignoringOtherApps: true)
+        // A page inside this window (embedded hosting) shows as the window grows.
+        if browser?.hostWindow == nil, !CraCEFRuntime.chromeHosting() { openTiming?.mark(.pageShown) }
+        traceGrow(to: final)
         // NSWindow frame animation (animationResizeTime is overridden to 120 ms).
         window.setFrame(final, display: true, animate: true)
         shell.frozenSize = nil
         shell.needsLayout = true
         shell.layoutSubtreeIfNeeded()
-        if let host, host.parent === window { host.alphaValue = 1 }
+        if let host, host.parent === window {
+            host.alphaValue = 1
+            openTiming?.mark(.pageShown)
+        }
         // A popup host has no URL until Chromium navigates it, but it is a page
         // all the same: the command bar would cover a sign-in popup.
         if hasPage || isPopupHost { focusPage() } else { openCommandBar() }
@@ -454,6 +461,34 @@ final class LittleWindowController: NSWindowController, NSWindowDelegate, @preco
         DispatchQueue.main.asyncAfter(deadline: .now() + 4) { finish(nil) }
         browser.sendDevToolsMethod("Runtime.evaluate", params: params.flatMap { String(data: $0, encoding: .utf8) } ?? "{}") { result, _ in
             DispatchQueue.main.async { finish(result.flatMap(LittleWindowPagePaint.init(devToolsResult:))) }
+        }
+    }
+
+    /// cra://debug?littleGrowTrace=1: timed Little Windows opened after it record their grow as
+    /// the window server shows it, for the readout (the look check of features.md #2b).
+    static var tracesGrow = false
+
+    /// Reads the window's frame from the window server every 2 ms for 350 ms, off the main thread,
+    /// which a blocking grow stops. `target` is the frame the window grows to.
+    private func traceGrow(to target: NSRect) {
+        guard Self.tracesGrow, openTiming != nil, let window else { return }
+        let number = CGWindowID(window.windowNumber)
+        let began = CACurrentMediaTime()
+        // The window server's bounds count from the top of the main screen.
+        let top = NSScreen.screens.first?.frame.maxY ?? 0
+        let cgTarget = CGRect(x: target.minX, y: top - target.maxY, width: target.width, height: target.height)
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            var samples: [GrowTrace.Sample] = []
+            while CACurrentMediaTime() - began < 0.35 {
+                if let info = (CGWindowListCopyWindowInfo(.optionIncludingWindow, number) as? [[String: Any]])?.first,
+                   let bounds = info[kCGWindowBounds as String] as? NSDictionary,
+                   let frame = CGRect(dictionaryRepresentation: bounds) {
+                    samples.append(.init(ms: (CACurrentMediaTime() - began) * 1000, frame: frame))
+                }
+                usleep(2000)
+            }
+            let trace = GrowTrace(samples: samples, target: cgTarget)
+            DispatchQueue.main.async { MainActor.assumeIsolated { self?.openTiming?.grow = trace } }
         }
     }
 

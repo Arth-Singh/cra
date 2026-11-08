@@ -14,6 +14,9 @@ public struct LittleWindowOpenTiming: Equatable, Sendable {
         case showStart, showEnd
         /// The page's first loading state.
         case loadingStart
+        /// The page can be seen: its window shown again after the grow (Chrome hosting keeps it
+        /// transparent while the window grows), or the window ordered in (a page in the window).
+        case pageShown
     }
 
     /// What asked for the window: "geturl" (another app's link), "open-urls" (a file or URL
@@ -28,6 +31,8 @@ public struct LittleWindowOpenTiming: Equatable, Sendable {
     /// a test instance's activation; the window may then open behind others, occluded.
     public private(set) var shownActive: Bool?
     public private(set) var shownKey: Bool?
+    /// The grow as the window server showed it, when tracing is on (cra://debug?littleGrowTrace=1).
+    public var grow: GrowTrace?
 
     public init(source: String, requested: UInt64, requestedWallMs: Double) {
         self.source = source
@@ -63,8 +68,9 @@ public struct LittleWindowOpenTiming: Equatable, Sendable {
 
     /// One line. Every value is ms after the request, except `make` and `show` (how long that
     /// step took), `make_to_nav` (how long making the page held its navigation back: what a page
-    /// made ahead of time saves) and `nav_to_paint` (the page's own first paint). "-" is a step
-    /// that hasn't happened, or a page that didn't answer. `onScreen`: the window wasn't occluded
+    /// made ahead of time saves) and `nav_to_paint` (the page's own first paint). `seen` is when
+    /// the user can see the page: its first paint, or the moment its window was shown if that came
+    /// later. "-" is a step that hasn't happened, or a page that didn't answer. `onScreen`: the window wasn't occluded
     /// when the readout was asked for. `vis` is the page's visibility states (state@ms after its
     /// navigation start); `hidden_before_paint` says whether one hid it before its first paint.
     public func readout(page: LittleWindowPagePaint?, onScreen: Bool? = nil) -> String {
@@ -83,15 +89,18 @@ public struct LittleWindowOpenTiming: Equatable, Sendable {
             ("nav_to_paint", Self.format(page?.firstPaintMs)),
             ("first_paint", Self.format(firstPaint)),
             ("fcp", Self.format(page?.firstContentfulPaintMs.flatMap { fcp in navStart.map { $0 + fcp } })),
+            ("page_shown", Self.format(ms(.pageShown))),
+            ("seen", Self.format(firstPaint.flatMap { paint in ms(.pageShown).map { max(paint, $0) } })),
             ("visible", page.map { $0.visible ? "1" : "0" } ?? "-"),
             ("active", Self.flag(shownActive)),
             ("key", Self.flag(shownKey)),
             ("on_screen", Self.flag(onScreen)),
             ("vis", page?.visibilityChanges.map { $0.isEmpty ? "-" : $0.map { "\($0.state)@\(Self.format($0.ms))" }.joined(separator: ",") } ?? "-"),
             ("hidden_before_paint", Self.flag(page?.hiddenBeforePaint)),
-            ("url", page?.url ?? "-"),
         ]
-        return "Cra little timing: " + fields.map { "\($0.0)=\($0.1)" }.joined(separator: " ")
+        // The address goes last: scripts match a readout by the line's end.
+        let line = fields.map { "\($0.0)=\($0.1)" }.joined(separator: " ")
+        return "Cra little timing: " + line + (grow.map { " " + $0.readout } ?? "") + " url=\(page?.url ?? "-")"
     }
 
     private static func difference(_ a: Double?, _ b: Double?) -> Double? {
