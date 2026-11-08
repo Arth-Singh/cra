@@ -39,6 +39,7 @@
       "text" : "example.com\/standup"
     }
   ],
+  "littleWindowOnOptionCommandClick" : false,
   "newTabButtonAtTop" : false,
   "newTabButtonDefaultMigrated" : true,
   "newTabsAtTop" : false,

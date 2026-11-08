@@ -328,6 +328,7 @@ final class WebKitBrowser: CraBrowser, WKNavigationDelegate, WKUIDelegate, WKDow
         guard action.navigationType == .linkActivated else { return decisionHandler(.allow, preferences) }
         let s = url.absoluteString
         let mods = action.modifierFlags
+        if opensLittleWindow(s, for: action) { return decisionHandler(.cancel, preferences) }
         // ⌘-click and middle-click: a new tab, in the background unless ⇧ is down too (Chrome).
         if mods.contains(.command) || action.buttonNumber == 2 {
             delegate?.browser(self, requestsNewTabWithURL: s, inBackground: !mods.contains(.shift))
@@ -406,6 +407,16 @@ final class WebKitBrowser: CraBrowser, WKNavigationDelegate, WKUIDelegate, WKDow
         webView.reload()
     }
 
+    /// A ⌥⌘-click opens in a Little Window when the delegate takes it: the clicks Chromium pages send
+    /// as "open in split view" (LittleWindowClick).
+    private func opensLittleWindow(_ url: String, for action: WKNavigationAction) -> Bool {
+        let mods = action.modifierFlags
+        guard LittleWindowClick.isOptionCommandClick(command: mods.contains(.command), option: mods.contains(.option),
+                                                     shift: mods.contains(.shift), middleButton: action.buttonNumber == 2)
+        else { return false }
+        return delegate?.browser?(self, opensLittleWindowForURL: url) == true
+    }
+
     // MARK: Windows and popups
 
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for action: WKNavigationAction,
@@ -417,6 +428,7 @@ final class WebKitBrowser: CraBrowser, WKNavigationDelegate, WKUIDelegate, WKDow
         // A target=_blank link: a new tab without an opener, like Chrome's noopener default.
         if action.navigationType == .linkActivated {
             let mods = action.modifierFlags
+            if opensLittleWindow(url, for: action) { return nil }
             if mods.contains(.command) || action.buttonNumber == 2 {
                 delegate?.browser(self, requestsNewTabWithURL: url, inBackground: !mods.contains(.shift))
             } else if delegate?.browser?(self, opensPeekForURL: url, shiftClick: mods.contains(.shift), newTab: true) != true {

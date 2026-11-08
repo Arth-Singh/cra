@@ -1508,6 +1508,12 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, BrowserM
         return true
     }
 
+    func browserManagerOpensLittleWindow(url: String, fromTab tabID: UUID) -> Bool {
+        guard LittleWindowClick.opens(url, incognito: isIncognito, settings: store.settings) else { return false }
+        browserManagerOpenLink(url, in: .little, space: store.spaceID(ofItem: tabID), fromIncognito: false)
+        return true
+    }
+
     func browserManagerCaptureImage(at point: NSPoint, tabID: UUID) {
         guard tabID == browsers.visibleTabID else { return }
         capturePage(liftImageAt: point)

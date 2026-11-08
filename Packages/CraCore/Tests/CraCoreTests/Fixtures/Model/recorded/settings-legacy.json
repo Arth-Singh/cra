@@ -29,6 +29,7 @@
       "text" : "meet.google.com"
     }
   ],
+  "littleWindowOnOptionCommandClick" : true,
   "newTabButtonAtTop" : true,
   "newTabButtonDefaultMigrated" : true,
   "newTabsAtTop" : true,

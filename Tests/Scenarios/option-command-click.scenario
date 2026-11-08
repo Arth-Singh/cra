@@ -1,0 +1,43 @@
+# Arc's "Open Little Arc when clicking on links with ⌥⌘ held" (on by default): a link ⌥⌘-clicked in
+# a tab opens in a Little Window, plain or target=_blank, and the tab stays on its page. Chromium 156
+# reports that click as "open in split view" (CEF_WOD_NEW_SPLIT_VIEW), which Cra opened as a selected
+# tab before. A ⌥-click still downloads. The clicks are real input: Blink drops the modifiers of a
+# synthesized click (navigation_policy.cc), so a page's a.click() can't open a Little Window.
+# Every check tags its value, so an earlier line can't answer it. WebKit pages count the same clicks
+# (LittleWindowClick), but a click posted to the app's queue did not reach WebKit's page content in a
+# background run (twice, 8 Nov), so that path is a line in docs/release-checklist.md.
+home
+budget rss=900 stalls50=40
+pace 0.5
+
+# Chromium (${PAGE}): two links at the page's top left, a plain one (y 0-80) and a target=_blank one
+# (y 80-160), clicked through the DevTools Protocol with ⌥⌘ (modifiers: ⌥ 1 | ⌘ 4).
+cra://open?url=${PAGE}?n=source
+expect-log loaded 127\.0\.0\.1 \(HTTP 200\)
+cra://debug?cdp=Runtime.evaluate&params={"expression":"(d=>(d.style.cssText='position:fixed;left:0;top:0;width:300px;z-index:9;background:white',[['plain',0],['blank',1]].map(([i,b])=>(a=>(a.href='?n='.concat(i),b?a.target='_blank':0,a.textContent=i,a.style.cssText='display:block;height:80px;background:silver',d.append(a)))(document.createElement('a'))),document.body.append(d),'links'))(document.createElement('div'))"}
+expect-log Cra cdp Runtime.evaluate .*"value":"links"
+cra://debug?cdp=Input.dispatchMouseEvent&params={"type":"mousePressed","x":50,"y":40,"button":"left","clickCount":1,"modifiers":5}
+cra://debug?cdp=Input.dispatchMouseEvent&params={"type":"mouseReleased","x":50,"y":40,"button":"left","clickCount":1,"modifiers":5}
+wait 3
+cra://debug?cdp=Runtime.evaluate&target=little&params={"expression":"'little1:'.concat(document.title)"}
+expect-log Cra cdp Runtime.evaluate .*"value":"little1:Fixture plain"
+cra://debug?cdp=Runtime.evaluate&params={"expression":"'tab1:'.concat(document.title)"}
+expect-log Cra cdp Runtime.evaluate .*"value":"tab1:Fixture source"
+
+cra://debug?cdp=Input.dispatchMouseEvent&params={"type":"mousePressed","x":50,"y":120,"button":"left","clickCount":1,"modifiers":5}
+cra://debug?cdp=Input.dispatchMouseEvent&params={"type":"mouseReleased","x":50,"y":120,"button":"left","clickCount":1,"modifiers":5}
+wait 3
+cra://debug?cdp=Runtime.evaluate&target=little&params={"expression":"'little2:'.concat(document.title)"}
+expect-log Cra cdp Runtime.evaluate .*"value":"little2:Fixture blank"
+cra://debug?cdp=Runtime.evaluate&params={"expression":"'tab2:'.concat(document.title)"}
+expect-log Cra cdp Runtime.evaluate .*"value":"tab2:Fixture source"
+
+# ⌥ alone: Chrome's download, no Little Window and no tab.
+cra://debug?cdp=Input.dispatchMouseEvent&params={"type":"mousePressed","x":50,"y":40,"button":"left","clickCount":1,"modifiers":1}
+cra://debug?cdp=Input.dispatchMouseEvent&params={"type":"mouseReleased","x":50,"y":40,"button":"left","clickCount":1,"modifiers":1}
+expect-log Download finished from a http: address
+cra://debug?cdp=Runtime.evaluate&target=little&params={"expression":"'little3:'.concat(document.title)"}
+expect-log Cra cdp Runtime.evaluate .*"value":"little3:Fixture blank"
+cra://debug?cdp=Runtime.evaluate&params={"expression":"'tab3:'.concat(document.title)"}
+expect-log Cra cdp Runtime.evaluate .*"value":"tab3:Fixture source"
+cra://debug?checkStore=1

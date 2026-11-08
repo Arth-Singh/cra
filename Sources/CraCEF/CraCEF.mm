@@ -1293,6 +1293,7 @@ public:
         }
         // Another app's address (spotify:) opens no tab: Cra asks "Open <app>?" over this page.
         if (g_appLinkHandler && g_appLinkHandler(o, NSStringFromCef(target_url), user_gesture)) return true;
+        if (OpensLittleWindow(o, target_url, target_disposition, user_gesture)) return true;
         // A target=_blank link the user clicked (Shift-clicked: a new window) may open in a
         // Peek; window.open with features (a sign-in popup) is CEF_WOD_NEW_POPUP and stays one.
         if (user_gesture && (target_disposition == CEF_WOD_NEW_FOREGROUND_TAB || target_disposition == CEF_WOD_NEW_WINDOW)
@@ -1592,10 +1593,20 @@ public:
         return [o.delegate browser:o opensPeekForURL:NSStringFromCef(request->GetURL()) shiftClick:NO newTab:NO];
     }
 
+    // ⌥⌘-click: Chromium 156 makes it "open in split view" (Blink's NavigationPolicyFromEventModifiers,
+    // real input only), a disposition Cra had no case for, so it opened a foreground tab. Cra's page
+    // menu drops Chrome's "Open Link in Split View", so only the click sends it.
+    bool OpensLittleWindow(CraBrowser* o, const CefString& url, WindowOpenDisposition disposition, bool user_gesture) {
+        return user_gesture && disposition == CEF_WOD_NEW_SPLIT_VIEW
+            && [o.delegate respondsToSelector:@selector(browser:opensLittleWindowForURL:)]
+            && [o.delegate browser:o opensLittleWindowForURL:NSStringFromCef(url)];
+    }
+
     bool OnOpenURLFromTab(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, const CefString& target_url,
                           WindowOpenDisposition target_disposition, bool user_gesture) override {
         CraBrowser* o = owner_;
         if (!o) return false;
+        if (OpensLittleWindow(o, target_url, target_disposition, user_gesture)) return true;
         // Shift-click (Chrome: a new window).
         if (user_gesture && target_disposition == CEF_WOD_NEW_WINDOW
             && [o.delegate respondsToSelector:@selector(browser:opensPeekForURL:shiftClick:newTab:)]
