@@ -327,23 +327,27 @@ final class WebKitBrowser: CraBrowser, WKNavigationDelegate, WKUIDelegate, WKDow
         }
         guard action.navigationType == .linkActivated else { return decisionHandler(.allow, preferences) }
         let s = url.absoluteString
-        let mods = action.modifierFlags
-        if opensLittleWindow(s, for: action) { return decisionHandler(.cancel, preferences) }
-        // ⌘-click and middle-click: a new tab, in the background unless ⇧ is down too (Chrome).
-        if mods.contains(.command) || action.buttonNumber == 2 {
-            delegate?.browser(self, requestsNewTabWithURL: s, inBackground: !mods.contains(.shift))
-            return decisionHandler(.cancel, preferences)
+        let destination = Self.linkClick(action).destination
+        switch destination {
+        case .littleWindow where delegate?.browser?(self, opensLittleWindowForURL: s) == true:
+            decisionHandler(.cancel, preferences)
+        // ⌘-click and middle-click: a new tab, in the background unless ⇧ is down too (Chrome); ⌥⌘
+        // with no Little Window to take it, a background tab.
+        case .littleWindow, .newTab:
+            delegate?.browser(self, requestsNewTabWithURL: s, inBackground: destination != .newTab(background: false))
+            decisionHandler(.cancel, preferences)
+        case .thisPage(let shift):
+            guard action.targetFrame?.isMainFrame ?? true else { return decisionHandler(.allow, preferences) }
+            // Arc's Peek, and Shift-click (Chrome's new window).
+            if delegate?.browser?(self, opensPeekForURL: s, shiftClick: shift, newTab: false) == true {
+                return decisionHandler(.cancel, preferences)
+            }
+            if shift {
+                delegate?.browser(self, requestsNewTabWithURL: s, inBackground: false)
+                return decisionHandler(.cancel, preferences)
+            }
+            decisionHandler(.allow, preferences)
         }
-        guard action.targetFrame?.isMainFrame ?? true else { return decisionHandler(.allow, preferences) }
-        // Arc's Peek, and Shift-click (Chrome's new window).
-        if delegate?.browser?(self, opensPeekForURL: s, shiftClick: mods.contains(.shift), newTab: false) == true {
-            return decisionHandler(.cancel, preferences)
-        }
-        if mods.contains(.shift) {
-            delegate?.browser(self, requestsNewTabWithURL: s, inBackground: false)
-            return decisionHandler(.cancel, preferences)
-        }
-        decisionHandler(.allow, preferences)
     }
 
     func webView(_ webView: WKWebView, decidePolicyFor response: WKNavigationResponse,
@@ -407,14 +411,12 @@ final class WebKitBrowser: CraBrowser, WKNavigationDelegate, WKUIDelegate, WKDow
         webView.reload()
     }
 
-    /// A ⌥⌘-click opens in a Little Window when the delegate takes it: the clicks Chromium pages send
-    /// as "open in split view" (LittleWindowClick).
-    private func opensLittleWindow(_ url: String, for action: WKNavigationAction) -> Bool {
+    /// A link click's keys and button as WebKit reports them, read the way Chromium reads its own
+    /// pages' clicks (LinkClick).
+    private static func linkClick(_ action: WKNavigationAction) -> LinkClick {
         let mods = action.modifierFlags
-        guard LittleWindowClick.isOptionCommandClick(command: mods.contains(.command), option: mods.contains(.option),
-                                                     shift: mods.contains(.shift), middleButton: action.buttonNumber == 2)
-        else { return false }
-        return delegate?.browser?(self, opensLittleWindowForURL: url) == true
+        return LinkClick(command: mods.contains(.command), option: mods.contains(.option), shift: mods.contains(.shift),
+                         middleButton: LinkClick.isMiddleButton(webKitButtonNumber: action.buttonNumber))
     }
 
     // MARK: Windows and popups
@@ -427,12 +429,16 @@ final class WebKitBrowser: CraBrowser, WKNavigationDelegate, WKUIDelegate, WKDow
         if AppLinkPrompt.handle(url, from: self, userGesture: true) { return nil }
         // A target=_blank link: a new tab without an opener, like Chrome's noopener default.
         if action.navigationType == .linkActivated {
-            let mods = action.modifierFlags
-            if opensLittleWindow(url, for: action) { return nil }
-            if mods.contains(.command) || action.buttonNumber == 2 {
-                delegate?.browser(self, requestsNewTabWithURL: url, inBackground: !mods.contains(.shift))
-            } else if delegate?.browser?(self, opensPeekForURL: url, shiftClick: mods.contains(.shift), newTab: true) != true {
-                delegate?.browser(self, requestsNewTabWithURL: url, inBackground: false)
+            let destination = Self.linkClick(action).destination
+            switch destination {
+            case .littleWindow where delegate?.browser?(self, opensLittleWindowForURL: url) == true:
+                break
+            case .littleWindow, .newTab:
+                delegate?.browser(self, requestsNewTabWithURL: url, inBackground: destination != .newTab(background: false))
+            case .thisPage(let shift):
+                if delegate?.browser?(self, opensPeekForURL: url, shiftClick: shift, newTab: true) != true {
+                    delegate?.browser(self, requestsNewTabWithURL: url, inBackground: false)
+                }
             }
             return nil
         }

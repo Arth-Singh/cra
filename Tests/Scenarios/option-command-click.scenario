@@ -4,7 +4,7 @@
 # tab before. A ⌥-click still downloads. The clicks are real input: Blink drops the modifiers of a
 # synthesized click (navigation_policy.cc), so a page's a.click() can't open a Little Window.
 # Every check tags its value, so an earlier line can't answer it. WebKit pages count the same clicks
-# (LittleWindowClick), but a click posted to the app's queue did not reach WebKit's page content in a
+# (LinkClick), but a click posted to the app's queue did not reach WebKit's page content in a
 # background run (twice, 8 Nov), so that path is a line in docs/release-checklist.md.
 home
 budget rss=900 stalls50=40
