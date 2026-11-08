@@ -878,6 +878,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             // littleClose=1: closes the newest Little Window whichever window is key. An action can't:
             // while Cra is inactive, perform() routes to the main window (keyLittleWindow skips panels).
             if dict["littleClose"] != nil { littleWindows.last?.closeWindow(); return }
+            // littlePromote=1: moves its page to the window's space, as ⌘O does when it is key.
+            if dict["littlePromote"] != nil { littleWindows.last?.promote(to: nil); return }
+            // littleGrowMs=<ms>: how long a Little Window's grow takes (Arc: 120), so a scenario's
+            // commands can land while one grows.
+            if let ms = dict["littleGrowMs"].flatMap(Double.init) { LittleMetrics.openDuration = ms / 1000; return }
             // littleGrowTrace=1: Little Windows opened after this record their grow (the readout's grow_ fields).
             if dict["littleGrowTrace"] != nil { LittleWindowController.tracesGrow = dict["littleGrowTrace"] == "1"; return }
             // Tests that leave the pointer alone: scroll=dy,steps,x,y scrolls the scroll view at a

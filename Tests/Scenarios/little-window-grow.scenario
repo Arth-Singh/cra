@@ -1,0 +1,34 @@
+# features.md #2b: a Little Window grows without blocking the main thread, so the page loads while
+# the window grows, and a move to a space or a close can come in the middle of it
+# (LittleWindowGrow). littleGrowMs stretches the grow to 2 s so the commands land inside it.
+budget rss=900 stalls50=40
+pace 0.5
+
+cra://debug?littleGrowMs=2000
+
+# Moved to a space while it grows: its page window was transparent for the grow, and it must
+# reach the tab shown, not transparent.
+cra://open?url=${PAGE}?n=grow-promote&little=1
+wait 0.5
+cra://debug?littlePromote=1
+wait 3
+cra://debug?embedDump=1
+expect-log host [0-9A-F]{8} win [0-9]+ alpha=1\.0 visible=true
+reject-log host [0-9A-F]{8} win [0-9]+ alpha=0\.0 visible=true
+
+# Closed while it grows: gone, and the grow's end that comes after does nothing.
+cra://open?url=${PAGE}?n=grow-close&little=1
+wait 0.5
+cra://debug?littleClose=1
+wait 3
+cra://debug?windows=1
+expect-log Cra windows: little=0 tabs=
+
+# A grow at its own length: the page shows once it ends, and the readout says so.
+cra://debug?littleGrowMs=120
+cra://open?url=${PAGE}?n=grow-timed&little=1
+wait 3
+cra://debug?littleTiming=1
+expect-log Cra little timing: source=cra-open .* page_shown=[0-9.]+ seen=\S+ .* url=http://127\.0\.0\.1:[0-9]+/.*n=grow-timed
+cra://debug?littleClose=1
+cra://debug?checkStore=1

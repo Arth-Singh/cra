@@ -77,7 +77,9 @@ enum LittleMetrics {
     /// animation included), so a stored copy of it was never the user's choice.
     static let legacyDefaultSize = NSSize(width: 1000, height: 700)
     static let minSize = NSSize(width: 480, height: 360)
-    static let openDuration: TimeInterval = 0.12
+    /// The grow from the pointer (Arc: about 120 ms). cra://debug?littleGrowMs= stretches it, so a
+    /// scenario's commands can land while a window grows.
+    @MainActor static var openDuration: TimeInterval = 0.12
 }
 
 /// Arc renders Little Arc with the default profile's dark palette whatever the
@@ -129,6 +131,8 @@ final class LittleWindowController: NSWindowController, NSWindowDelegate, @preco
     /// How this window opened, for cra://debug?littleTiming=1; nil for a Peek, a popup host and
     /// a window Cra opens itself (features.md #2).
     private var openTiming: LittleWindowOpenTiming?
+    /// show()'s grow, which runs while other work does (LittleWindowGrow).
+    private var grow = LittleWindowGrow()
     /// The page (a video) is in element fullscreen.
     private var pageFullscreen = false
     private let shell: LittleShellView
@@ -327,12 +331,15 @@ final class LittleWindowController: NSWindowController, NSWindowDelegate, @preco
         // CEF hands the page window over at its own small frame: shown during a Peek's open it
         // flashed as a black block in the corner.
         if openingPeek { w.contentView?.isHidden = true }
+        // Arriving while the window grows: transparent like the one show() found (it would stick
+        // out of the growing frame), shown when the grow ends.
+        if grow.hidesNewPageWindow { w.alphaValue = 0 }
         window.addChildWindow(w, ordered: .above)
         ChromiumChildFocus.attach(w)
         positionHostWindow(shell.convert(shell.page.frame, to: nil))
         w.orderFront(nil)
         rejoinPage()
-        if window.isVisible { openTiming?.mark(.pageShown) }
+        if window.isVisible, !grow.hidesNewPageWindow { openTiming?.mark(.pageShown) }
         // The command bar and the spaces popup stay above the page window.
         if commandPanel.parent === window { window.removeChildWindow(commandPanel); window.addChildWindow(commandPanel, ordered: .above) }
     }
@@ -397,9 +404,12 @@ final class LittleWindowController: NSWindowController, NSWindowDelegate, @preco
     }
 
     /// Arc grows the window from a small rectangle under the pointer to its
-    /// full frame in about 120 ms (content laid out at full size, no fade).
+    /// full frame in about 120 ms (content laid out at full size, no fade). The window server runs
+    /// the grow (NSAnimationContext): NSWindow.setFrame(animate: true) stopped the main thread for
+    /// it, and with it Chromium, so the page couldn't load or paint while the window grew
+    /// (scripts/lint.py blocking-frame-animation). A second show() while it grows leaves it alone.
     func show() {
-        guard let window else { return }
+        guard let window, let generation = grow.start() else { return }
         openTiming?.mark(.showStart)
         defer {
             openTiming?.mark(.showEnd)
@@ -422,18 +432,33 @@ final class LittleWindowController: NSWindowController, NSWindowDelegate, @preco
         // A page inside this window (embedded hosting) shows as the window grows.
         if browser?.hostWindow == nil, !CraCEFRuntime.chromeHosting() { openTiming?.mark(.pageShown) }
         traceGrow(to: final)
-        // NSWindow frame animation (animationResizeTime is overridden to 120 ms).
-        window.setFrame(final, display: true, animate: true)
-        shell.frozenSize = nil
-        shell.needsLayout = true
-        shell.layoutSubtreeIfNeeded()
-        if let host, host.parent === window {
+        // The curve the old setFrame(animate: true) drew, as the window server showed it.
+        NSAnimationContext.runAnimationGroup({ context in
+            context.duration = LittleMetrics.openDuration
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            window.animator().setFrame(final, display: true)
+        }, completionHandler: { [weak self] in
+            MainActor.assumeIsolated { self?.endGrow(.finished, generation: generation) }
+        })
+    }
+
+    /// The grow's end, or a close or a move to a space while it runs: what LittleWindowGrow says.
+    private func endGrow(_ how: LittleWindowGrow.End, generation: Int? = nil) {
+        let key = NSApp.keyWindow
+        let keyElsewhere = key != nil && key !== window && key?.parent !== window
+        let steps = grow.end(how, generation: generation ?? grow.generation, keyElsewhere: keyElsewhere)
+        if steps.contains(.layout) {
+            shell.frozenSize = nil
+            shell.needsLayout = true
+            shell.layoutSubtreeIfNeeded()
+        }
+        if steps.contains(.showPage), let host = browser?.hostWindow, host.parent === window {
             host.alphaValue = 1
             openTiming?.mark(.pageShown)
         }
         // A popup host has no URL until Chromium navigates it, but it is a page
         // all the same: the command bar would cover a sign-in popup.
-        if hasPage || isPopupHost { focusPage() } else { openCommandBar() }
+        if steps.contains(.focus) { if hasPage || isPopupHost { focusPage() } else { openCommandBar() } }
     }
 
     // MARK: Open timing (features.md #2)
@@ -884,6 +909,8 @@ final class LittleWindowController: NSWindowController, NSWindowDelegate, @preco
     /// live browser goes with it, so history, scroll position and logins stay.
     func promote(to spaceID: UUID?) {
         guard let b = browser, hasPage else { return }
+        // Moved while the window grows: its page window must not reach the tab transparent.
+        endGrow(.promoting)
         closePopup()
         commandBar.close()
         app.useNormalWindow()
@@ -1072,6 +1099,7 @@ final class LittleWindowController: NSWindowController, NSWindowDelegate, @preco
 
     func windowWillClose(_ notification: Notification) {
         guard (notification.object as? NSWindow) === window else { return }
+        endGrow(.closed)
         endPeek()
         if browser == nil { app.removeLittleWindow(self) }
     }
@@ -1409,8 +1437,6 @@ final class LittleWindow: NSPanel {
     /// Window buttons stay coloured while inactive (see CraWindow).
     @objc(_hasActiveAppearanceForStandardWindowButton:)
     func hasActiveAppearance(forStandardWindowButton type: UInt) -> Bool { true }
-    /// Arc's open animation: ~120 ms from a small rectangle to the full frame.
-    override func animationResizeTime(_ newFrame: NSRect) -> TimeInterval { LittleMetrics.openDuration }
     /// A Peek is borderless (Arc's card has no title bar) but still takes the keyboard.
     override var canBecomeKey: Bool { true }
     /// A panel never becomes main; a titled window did, and the browser window's active look
