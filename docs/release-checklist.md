@@ -75,8 +75,10 @@ built release app with a test profile. Note anything that fails in the release's
   Window over it, and doesn't when Settings ▸ Tabs ▸ Links is off.
 - **⌥⌘-click, WebKit:** on a WebKit page (a DRM service, Settings ▸ Safari's Engine), ⌥⌘-click a
   link: it opens in a Little Window and the tab stays. With Settings ▸ Tabs ▸ Links ▸ "Open a Little
-  Window when clicking on links with ⌥⌘ held" off, it opens a background tab. Chromium pages are
-  covered by Tests/Scenarios/option-command-click.
+  Window when clicking on links with ⌥⌘ held" off, it opens a background tab. A middle-click opens
+  a background tab, and a ⌥-click downloads the link, a plain one and a `target=_blank` one; the page
+  takes the next click. cra.log has a line for each, such as `link ⌥⌘-click (WebKit, button 1) →
+  Little Window, <host>`. Chromium pages are covered by Tests/Scenarios/option-command-click.
 - **#202:** in a Peek, ⌘-click a `target=_blank` link: a background tab opens and the Peek
   stays. A plain click on it closes the Peek and selects the new tab below the source tab.
 - **PR #222:** with a Peek open, the browser window keeps its full shadow and coloured traffic

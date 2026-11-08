@@ -15,9 +15,10 @@ struct LinkClickTests {
         (command: true, option: false, shift: true, middle: false, goes: .newTab(background: false)),
         (command: false, option: false, shift: true, middle: true, goes: .newTab(background: false)),
         (command: true, option: true, shift: true, middle: false, goes: .newTab(background: false)),
-        // Neither: the page itself (Peek may take it); ⇧ alone is Chrome's new window.
+        // ⌥ alone: Chrome's download (Safari's and Arc's too). A WebKit page loaded the link in place.
+        (command: false, option: true, shift: false, middle: false, goes: .download),
+        // Neither: the page itself (Peek may take it); ⇧ alone is Chrome's new window, ⇧⌥ too.
         (command: false, option: false, shift: false, middle: false, goes: .thisPage(shift: false)),
-        (command: false, option: true, shift: false, middle: false, goes: .thisPage(shift: false)),
         (command: false, option: false, shift: true, middle: false, goes: .thisPage(shift: true)),
         (command: false, option: true, shift: true, middle: false, goes: .thisPage(shift: true)),
     ])

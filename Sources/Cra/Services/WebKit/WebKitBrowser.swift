@@ -339,6 +339,14 @@ final class WebKitBrowser: CraBrowser, WKNavigationDelegate, WKUIDelegate, WKDow
             delegate?.browser(self, requestsNewTabWithURL: s, inBackground: background)
             logLinkClick(click, action, s, background ? "new tab in the background" : "new tab")
             decisionHandler(.cancel, preferences)
+        // ⌥-click: a download, as on Chromium pages (WKDownloadDelegate below takes it). A
+        // target=_blank link's starts here: given .download for a new window's navigation, WebKit
+        // started none and the page took no more clicks (a WKWebView, 8 Nov 2026).
+        case .download:
+            logLinkClick(click, action, s, "download")
+            guard action.targetFrame == nil else { return decisionHandler(.download, preferences) }
+            decisionHandler(.cancel, preferences)
+            webView.startDownload(using: action.request) { [weak self] download in download.delegate = self }
         case .thisPage(let shift):
             guard action.targetFrame?.isMainFrame ?? true else {
                 logLinkClick(click, action, s, "its frame")
@@ -454,6 +462,10 @@ final class WebKitBrowser: CraBrowser, WKNavigationDelegate, WKUIDelegate, WKDow
                 let background = click.destination != .newTab(background: false)
                 delegate?.browser(self, requestsNewTabWithURL: url, inBackground: background)
                 logLinkClick(click, action, url, background ? "new tab in the background" : "new tab")
+            // decidePolicyFor started a ⌥-click's download and cancelled the navigation, so WebKit
+            // doesn't ask for a window then.
+            case .download:
+                break
             case .thisPage(let shift):
                 if delegate?.browser?(self, opensPeekForURL: url, shiftClick: shift, newTab: true) == true {
                     logLinkClick(click, action, url, "Peek")

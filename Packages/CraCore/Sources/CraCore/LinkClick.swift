@@ -23,13 +23,15 @@ public struct LinkClick: Equatable, Sendable {
         case littleWindow
         /// ⌘ or the middle button: a new tab, in the background unless ⇧ is down too.
         case newTab(background: Bool)
-        /// Neither ⌘ nor the middle button: this page, unless Peek takes the link. ⇧ alone is
-        /// Chrome's new window, a tab in front here.
+        /// ⌥ alone: Chrome's download of the link (Safari's and Arc's too).
+        case download
+        /// Neither ⌘ nor the middle button nor ⌥ alone: this page, unless Peek takes the link. ⇧
+        /// (also with ⌥) is Chrome's new window, a tab in front here.
         case thisPage(shift: Bool)
     }
 
     public var destination: Destination {
-        guard command || middleButton else { return .thisPage(shift: shift) }
+        guard command || middleButton else { return option && !shift ? .download : .thisPage(shift: shift) }
         return option && !shift ? .littleWindow : .newTab(background: !shift)
     }
 
