@@ -1481,7 +1481,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, BrowserM
         guard browsers.runtime(for: tabID)?.browser.isInPictureInPicture == true else { return }
         store.selectTab(tabID, window: windowID)
         showWindow(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        NSApp.bringCraForward(ignoringOtherApps: true)
     }
 
     func browserManagerPageClosedTab(_ tabID: UUID) { closeTab(tabID) }
@@ -1494,7 +1494,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, BrowserM
         store.selectTab(tabID, window: windowID)
         if byPage, !HitchMonitor.background {
             showWindow(nil)
-            NSApp.activate(ignoringOtherApps: true)
+            NSApp.bringCraForward(ignoringOtherApps: true)
         } else if NSApp.isActive, window?.isKeyWindow == false {
             showWindow(nil)
         }
@@ -3154,7 +3154,7 @@ final class MainWindowController: NSWindowController, NSWindowDelegate, BrowserM
         positionCommandPanel()
         if commandPanel.parent == nil { window.addChildWindow(commandPanel, ordered: .above) }
         commandBarOpenedAt = Date()
-        if !HitchMonitor.background { NSApp.activate(ignoringOtherApps: true) }
+        NSApp.bringCraForward(ignoringOtherApps: true)
         // Key immediately (typing never waits); CommandBarView fades itself in.
         commandPanel.makeKeyAndOrderFront(nil)
         observeCommandBar()

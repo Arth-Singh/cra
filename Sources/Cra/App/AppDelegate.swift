@@ -110,7 +110,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             // Measured behind whatever is in front; still on screen, so pages keep drawing.
             for w in mainWindows { w.window?.orderBack(nil) }
         } else if !SoftwareUpdater.shared.launchedByAutoUpdate {
-            NSApp.activate(ignoringOtherApps: true)
+            NSApp.bringCraForward(ignoringOtherApps: true)
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in self?.installURLEventHandler() }
         // The Site Control Center's Share would otherwise pay for finding the share extensions.
@@ -146,7 +146,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                 guard let self else { return }
                 // Each URL decides what to raise: a Little Window keeps the main
                 // window where it is (Arc), cra://action/… keeps the key window.
-                if urls.isEmpty { self.main.showWindow(nil); NSApp.activate(ignoringOtherApps: true) }
+                if urls.isEmpty { self.main.showWindow(nil); NSApp.bringCraForward(ignoringOtherApps: true) }
                 for u in urls { self.openExternalURL(u) }
             }
         }
@@ -171,7 +171,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         // and cookies go into its databases before it starts (CredentialImport).
         if outcome.needsRelaunch { relaunch(); return }
         main.showWindow(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        NSApp.bringCraForward(ignoringOtherApps: true)
     }
 
     /// Saves, quits and starts again once this process is gone (the CEF profile is
@@ -420,7 +420,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             store.createTab(url: url, select: true)
         }
         main.showWindow(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        NSApp.bringCraForward(ignoringOtherApps: true)
     }
 
     // MARK: Menu bar (#231)
@@ -602,7 +602,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         if !incognito, !blank, let hidden = mainWindows.first(where: { !$0.isStandalone }),
            !mainWindows.contains(where: { $0.window?.isVisible == true || $0.window?.isMiniaturized == true }) {
             hidden.showWindow(nil)
-            NSApp.activate(ignoringOtherApps: true)
+            NSApp.bringCraForward(ignoringOtherApps: true)
             if let url { store.createTab(url: url, select: true, window: hidden.windowID) }
             return
         }
@@ -627,7 +627,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         mainWindows.append(c)
         store.activeWindowID = c.windowID
         c.showWindow(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        NSApp.bringCraForward(ignoringOtherApps: true)
         return c
     }
 
@@ -803,7 +803,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         let little = u.host == "open" && q("little") == "1"
         if (u.host != "action" || keyLittleWindow == nil) && !little && !HitchMonitor.background {
             main.showWindow(nil)
-            NSApp.activate(ignoringOtherApps: true)
+            NSApp.bringCraForward(ignoringOtherApps: true)
         }
         switch u.host {
         case "commandbar":

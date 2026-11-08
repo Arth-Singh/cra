@@ -224,7 +224,7 @@ final class SoftwareUpdater: NSObject {
         if window == nil { window = UpdaterWindowController(updater: self) }
         window?.showWindow(nil)
         window?.window?.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        NSApp.bringCraForward(ignoringOtherApps: true)
     }
 
     func windowDidClose() {

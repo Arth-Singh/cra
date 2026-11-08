@@ -406,7 +406,7 @@ final class LittleWindowController: NSWindowController, NSWindowDelegate, @preco
         window.setFrame(start, display: false)
         window.makeKeyAndOrderFront(nil)
         rejoinPage()
-        NSApp.activate(ignoringOtherApps: true)
+        NSApp.bringCraForward(ignoringOtherApps: true)
         // NSWindow frame animation (animationResizeTime is overridden to 120 ms).
         window.setFrame(final, display: true, animate: true)
         shell.frozenSize = nil
@@ -450,7 +450,7 @@ final class LittleWindowController: NSWindowController, NSWindowDelegate, @preco
         pw.makeMain()
         controls.orderFront(nil)
         window.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        NSApp.bringCraForward(ignoringOtherApps: true)
         openingPeek = true
         // Hidden, not transparent: Chromium sets its page window's alpha back to 1 as it shows it.
         if let host = browser?.hostWindow, host.parent === window { host.contentView?.isHidden = true }
@@ -826,7 +826,7 @@ final class LittleWindowController: NSWindowController, NSWindowDelegate, @preco
         window?.close()
         target.showWindow(nil)
         target.window?.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        NSApp.bringCraForward(ignoringOtherApps: true)
     }
 
     // MARK: Profile
@@ -1348,7 +1348,7 @@ final class LittleWindow: NSPanel {
     override func sendEvent(_ event: NSEvent) {
         if styleMask.contains(.nonactivatingPanel), !NSApp.isActive,
            [.leftMouseDown, .rightMouseDown, .otherMouseDown].contains(event.type) {
-            NSApp.activate(ignoringOtherApps: true)
+            NSApp.bringCraForward(ignoringOtherApps: true)
         }
         // The page is a Chromium child window. With it key, a press on the bar reached the button
         // but its release never came, so Back, Forward, Refresh, the address and "Open in" did

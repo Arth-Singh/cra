@@ -818,7 +818,7 @@ final class BrowserManager: NSObject, @preconcurrency CraBrowserDelegate {
     private func bringToFront(_ tabID: UUID) {
         store.selectTab(tabID, window: windowID)
         container.window?.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        NSApp.bringCraForward(ignoringOtherApps: true)
         runtimes[tabID]?.browser.exitPictureInPicture()
     }
 
