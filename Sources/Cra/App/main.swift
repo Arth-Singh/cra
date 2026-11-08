@@ -27,7 +27,11 @@ MainActor.assumeIsolated {
     CraLog.startSession(owner: profileIsFree)
     // Cookies and passwords move from the mock keychain to Cra's Keychain item first,
     // staged imports included, so everything below writes with the key Chromium reads.
-    SafeStorage.prepare(profileIsFree: profileIsFree)
+    // A profile on the Keychain opens only with its secret: Chromium deletes every cookie it
+    // cannot decrypt (SafeStorageStart). Try Again asks the Keychain again.
+    while case .refuse(let refusal) = SafeStorage.prepare(profileIsFree: profileIsFree) {
+        guard SafeStorageDialog.tryAgain(after: refusal) else { exit(0) }
+    }
     if profileIsFree {
         let profile = AppPaths.chromiumCache.appendingPathComponent("Default", isDirectory: true)
         if CredentialImport.hasPending { CredentialImport.applyPending(root: AppPaths.chromiumCache) }

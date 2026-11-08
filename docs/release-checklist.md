@@ -141,6 +141,11 @@ built release app with a test profile. Note anything that fails in the release's
   `secure dns: secure via dns.google` and chrome://settings/security shows the same choice.
 - **#190:** with Ask Where to Save Each File on, the save panel is a sheet on Cra's window, and
   Cancel cancels the download.
+- **Keychain Deny:** on a profile that uses the Keychain (its `Chromium/Cra Safe Storage` file
+  exists), open a build with a new ad-hoc signature and click Deny when macOS asks for
+  "Cra Safe Storage". Cra shows "Cra can't unlock your saved logins" before any window, no
+  `Cra Helper` process starts, and Try Again asks again. After Always Allow, sites are still
+  signed in (SafeStorageStart decides; only the prompt needs a person).
 
 ## Not pinned yet
 

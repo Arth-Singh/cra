@@ -65,6 +65,7 @@ enum StoreTests {
         allFoldersExpanded()
         revealInSidebar()
         oneWindowAtLaunch()
+        safeStorageGuard()
         print("Store: \(checks) checks passed")
     }
 
@@ -1763,6 +1764,26 @@ enum StoreTests {
         store.togglePinnedCollapsed(sid)
         store.revealInSidebar(today.id)
         expect(store.isPinnedCollapsed(sid), "a Today tab leaves the pinned section as it is")
+    }
+
+    /// A Keychain profile opens only with its secret (SafeStorageStart), through the production
+    /// SafeStorage.prepare. Neither path asks the Keychain: without the marker this unsigned binary
+    /// never migrates, and with it the harness has no CEF framework, which is refused first.
+    @MainActor
+    private static func safeStorageGuard() {
+        precondition(AppPaths.supportDir.path.hasPrefix(FileManager.default.temporaryDirectory.path),
+                     "safeStorageGuard runs only on a temporary data folder")
+        let marker = AppPaths.chromiumCache.appendingPathComponent("Cra Safe Storage")
+        try? FileManager.default.removeItem(at: marker)
+        expect(SafeStorage.prepare(profileIsFree: true) == .start, "a profile that never used the Keychain starts")
+        expect(!SafeStorage.usesKeychain && SafeStorage.key != nil, "on the mock keychain, as unsigned dev builds always did")
+
+        try? FileManager.default.createDirectory(at: AppPaths.chromiumCache, withIntermediateDirectories: true)
+        FileManager.default.createFile(atPath: marker.path, contents: Data())
+        expect(SafeStorage.prepare(profileIsFree: true) == .refuse(.otherEngine),
+               "a Keychain profile does not start on an engine without Cra's Keychain item")
+        expect(!SafeStorage.usesKeychain, "and Chromium is not told to use the Keychain")
+        try? FileManager.default.removeItem(at: marker)
     }
 
     private static func expect(_ condition: @autoclosure () -> Bool, _ message: String) {
