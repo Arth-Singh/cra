@@ -13,5 +13,41 @@
   // ?beforeunload=1: asks "Leave site?" like a shop with something in its cart (once the page had a gesture).
   if (query.get('beforeunload') === '1') addEventListener('beforeunload', e => { e.preventDefault(); e.returnValue = ''; });
   const rows = document.getElementById('rows');
+  // ?frame=N: this page again in a same-origin iframe, N deep (tab-sleep-frames.scenario).
+  const depth = Number(query.get('frame') || 0);
+  if (depth > 0) {
+    const frame = document.createElement('iframe');
+    frame.src = 'page.html?n=' + encodeURIComponent(n + '-in') + '&frame=' + (depth - 1);
+    document.body.insertBefore(frame, rows);
+  }
+  // ?xframe=1: this page in an iframe of another site (localhost, same port), so out of process.
+  if (query.get('xframe') === '1') {
+    const frame = document.createElement('iframe');
+    frame.src = location.protocol + '//localhost:' + location.port + '/page.html?n=' + encodeURIComponent(n + '-x') + '&focusinput=1';
+    document.body.insertBefore(frame, rows);
+  }
+  // ?openframe=1: an editor made the way older rich-text editors make one: a src-less iframe that,
+  // once its about:blank has loaded, is written with document.open/write/close, its body
+  // contenteditable. (Written at once instead, whether Cra's script ran there first is a race.)
+  if (query.get('openframe') === '1') {
+    const frame = document.createElement('iframe');
+    frame.addEventListener('load', () => setTimeout(() => {
+      const doc = frame.contentDocument;
+      doc.open();
+      doc.write('<!doctype html><title>editor</title><body contenteditable="true"></body>');
+      doc.close();
+    }, 200), { once: true });
+    document.body.insertBefore(frame, rows);
+  }
+  // ?focusinput=1: the input takes focus when this window does (a page can't focus into a frame of another origin).
+  const input = document.querySelector('input');
+  if (query.get('focusinput') === '1') addEventListener('focus', () => input.focus());
+  // A parent of another origin asks for this page's state: whether Cra's document-start scripts ran here
+  // (their Widevine wrapper in this world), the input's value and the focused element.
+  addEventListener('message', e => {
+    if (e.data !== 'fixture:state') return;
+    const scripts = String(navigator.requestMediaKeySystemAccess).includes('com.widevine');
+    e.source.postMessage('scripts:' + scripts + ',value:' + input.value + ',focused:' + document.activeElement.tagName, '*');
+  });
   for (let i = 0; i < 200; i++) { const d = document.createElement('div'); d.className = 'row'; d.textContent = 'Row ' + i; rows.appendChild(d); }
 </script>
