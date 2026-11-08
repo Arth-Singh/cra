@@ -34,6 +34,13 @@ gains a finding fails, one that loses one is reported so the baseline can come d
       The performance recorder stays removable (#91, docs/performance.md): outside its two folders
       only the files in PERF_CALLERS reach it, and inside Sources/Cra/Perf only PerfCEF.swift sees
       Chromium (CraCEF), so the facade and recorder compile in the test harnesses.
+  blocking-frame-animation
+      NSWindow.setFrame(_:display:animate: true) runs its animation in a private run-loop mode and
+      returns when it ends. Chromium schedules all its work in the common modes
+      (base/message_loop/message_pump_apple.mm), and CEF's UI thread is the main thread, so every
+      page stops for the whole animation: a Little Window's 120 ms grow pushed its first paint
+      back by as much (features.md #2, 8 Nov 2026). Animate with NSAnimationContext and
+      window.animator().setFrame(_:display:), which returns at once.
 """
 import collections
 import os
@@ -55,6 +62,7 @@ PERF_CALLERS = {"App/main.swift", "App/AppDelegate.swift", "Services/BrowserMana
                 "UI/Settings/SettingsWindowController.swift"}
 PERF_NAME = re.compile(r"\b(?:Perf(?:[A-Z]\w*)?|PerformancePane)\b")
 NETWORK = re.compile(r"\bURLSession\b|\bCFNetwork\b|\bNWConnection\b|\bNWPathMonitor\b|^\s*import\s+Network\b|\bCFSocket\w*|\bCFStream\w*|\bsocket\(")
+BLOCKING_FRAME_ANIMATION = re.compile(r"\.setFrame\(.*\banimate:\s*true\b")
 CLOCK_FILES = {"Services/SidebarStore.swift", "Services/BrowserManager.swift", "Services/LiveFolderManager.swift",
                "Services/SidebarIntegrity.swift", "App/AppComposition.swift"}
 
@@ -103,6 +111,8 @@ def findings():
                 hit("wall-clock-in-decision", rel, i)
             if "withObservationTracking" in line:
                 hit("raw-observation-tracking", rel, i)
+            if BLOCKING_FRAME_ANIMATION.search(line):
+                hit("blocking-frame-animation", rel, i)
             if rel.startswith(PERF_DIRS):
                 if NETWORK.search(line):
                     hit("perf-no-network", rel, i)
