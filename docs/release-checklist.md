@@ -77,6 +77,9 @@ built release app with a test profile. Note anything that fails in the release's
   link: it opens in a Little Window and the tab stays. With Settings ▸ Tabs ▸ Links ▸ "Open a Little
   Window when clicking on links with ⌥⌘ held" off, it opens a background tab. Chromium pages are
   covered by Tests/Scenarios/option-command-click.
+- **Boost editor resize:** in the Boost editor, open the code panel and close it again. The editor
+  widens and narrows smoothly from its right edge, with no jump at the end, as before it stopped
+  blocking the main thread. (A Little Window's grow is checked by its frame trace, not here.)
 - **#202:** in a Peek, ⌘-click a `target=_blank` link: a background tab opens and the Peek
   stays. A plain click on it closes the Peek and selects the new tab below the source tab.
 - **PR #222:** with a Peek open, the browser window keeps its full shadow and coloured traffic

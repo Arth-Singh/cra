@@ -77,7 +77,13 @@ final class BoostEditorController {
         var f = panel.frame
         f.origin.x = f.maxX - width
         f.size.width = width
-        panel.setFrame(f, display: true, animate: true)
+        // The window server runs the resize: setFrame(animate: true) stopped the main thread, and with
+        // it the page being boosted (scripts/lint.py blocking-frame-animation). Same length and curve.
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = panel.animationResizeTime(f)
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            panel.animator().setFrame(f, display: true)
+        }
     }
 }
 
