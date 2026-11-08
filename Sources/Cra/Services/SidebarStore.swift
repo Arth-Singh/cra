@@ -2334,10 +2334,7 @@ final class SidebarStore {
         e.lastVisit = clock.now
         if !title.isEmpty { e.title = title }
         history[url] = e
-        if history.count > 5000 {
-            let drop = history.values.sorted { $0.lastVisit < $1.lastVisit }.prefix(history.count - 5000)
-            for d in drop { history[d.url] = nil }
-        }
+        for gone in HistoryCap.dropped(history.values) { history[gone] = nil }
         historyFile.save(Array(history.values), delay: 5)
     }
 
