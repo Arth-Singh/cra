@@ -1334,6 +1334,13 @@ final class BrowserManager: NSObject, @preconcurrency CraBrowserDelegate {
         return delegate?.browserManagerOpensLittleWindow(url: url, fromTab: id) ?? false
     }
 
+    /// A link clicked with ⌘, ⌥, ⇧ or the middle button: what the engine reported and where it went,
+    /// with the host only, like every other line.
+    func browser(_ browser: CraBrowser, handledLinkClick click: String, toURL url: String, result: String) {
+        guard let id = tabID(of: browser) else { return }
+        log(id, "link \(click) → \(result), \(site(url, id, browser))")
+    }
+
     func devToolsHostView(for browser: CraBrowser) -> NSView? {
         guard let id = tabID(of: browser) else { return nil }
         return delegate?.browserManagerDevToolsHost(for: id)

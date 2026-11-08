@@ -25,6 +25,17 @@ struct LinkClickTests {
         #expect(LinkClick(command: c.command, option: c.option, shift: c.shift, middleButton: c.middle).destination == c.goes)
     }
 
+    /// cra.log's names, and which clicks it names at all: a plain click goes where the page says.
+    @Test func whatTheLogSays() {
+        #expect(LinkClick(command: true, option: true, shift: false, middleButton: false).keys == "⌥⌘-click")
+        #expect(LinkClick(command: true, option: true, shift: true, middleButton: false).keys == "⌥⇧⌘-click")
+        #expect(LinkClick(command: false, option: false, shift: false, middleButton: true).keys == "middle-click")
+        #expect(LinkClick(command: false, option: true, shift: false, middleButton: true).keys == "⌥ middle-click")
+        #expect(LinkClick(command: false, option: true, shift: false, middleButton: false).isModified)
+        #expect(LinkClick(command: false, option: false, shift: false, middleButton: true).isModified)
+        #expect(!LinkClick(command: false, option: false, shift: false, middleButton: false).isModified)
+    }
+
     /// WKNavigationAction.buttonNumber is a mask of the button, the way NSEvent.pressedMouseButtons
     /// is: left 1, right 2, middle 4, as a WKWebView reported real clicks sent to it (8 Nov 2026).
     /// Read as NSEvent's number (middle 2), a middle-click on a WebKit page loaded the link in

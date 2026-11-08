@@ -23,6 +23,8 @@ cra://debug?cdp=Runtime.evaluate&target=little&params={"expression":"'little1:'.
 expect-log Cra cdp Runtime.evaluate .*"value":"little1:Fixture plain"
 cra://debug?cdp=Runtime.evaluate&params={"expression":"'tab1:'.concat(document.title)"}
 expect-log Cra cdp Runtime.evaluate .*"value":"tab1:Fixture source"
+# cra.log says what Chromium made of the click and where it went (the host only).
+expect-log tab [0-9A-F]{8} link click for a split view \(Chromium\) → Little Window, 127\.0\.0\.1$
 
 cra://debug?cdp=Input.dispatchMouseEvent&params={"type":"mousePressed","x":50,"y":120,"button":"left","clickCount":1,"modifiers":5}
 cra://debug?cdp=Input.dispatchMouseEvent&params={"type":"mouseReleased","x":50,"y":120,"button":"left","clickCount":1,"modifiers":5}

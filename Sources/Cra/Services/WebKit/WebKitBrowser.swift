@@ -327,25 +327,35 @@ final class WebKitBrowser: CraBrowser, WKNavigationDelegate, WKUIDelegate, WKDow
         }
         guard action.navigationType == .linkActivated else { return decisionHandler(.allow, preferences) }
         let s = url.absoluteString
-        let destination = Self.linkClick(action).destination
-        switch destination {
+        let click = Self.linkClick(action)
+        switch click.destination {
         case .littleWindow where delegate?.browser?(self, opensLittleWindowForURL: s) == true:
+            logLinkClick(click, action, s, "Little Window")
             decisionHandler(.cancel, preferences)
         // ⌘-click and middle-click: a new tab, in the background unless ⇧ is down too (Chrome); ⌥⌘
         // with no Little Window to take it, a background tab.
         case .littleWindow, .newTab:
-            delegate?.browser(self, requestsNewTabWithURL: s, inBackground: destination != .newTab(background: false))
+            let background = click.destination != .newTab(background: false)
+            delegate?.browser(self, requestsNewTabWithURL: s, inBackground: background)
+            logLinkClick(click, action, s, background ? "new tab in the background" : "new tab")
             decisionHandler(.cancel, preferences)
         case .thisPage(let shift):
-            guard action.targetFrame?.isMainFrame ?? true else { return decisionHandler(.allow, preferences) }
+            guard action.targetFrame?.isMainFrame ?? true else {
+                logLinkClick(click, action, s, "its frame")
+                return decisionHandler(.allow, preferences)
+            }
             // Arc's Peek, and Shift-click (Chrome's new window).
             if delegate?.browser?(self, opensPeekForURL: s, shiftClick: shift, newTab: false) == true {
+                logLinkClick(click, action, s, "Peek")
                 return decisionHandler(.cancel, preferences)
             }
             if shift {
                 delegate?.browser(self, requestsNewTabWithURL: s, inBackground: false)
+                logLinkClick(click, action, s, "new tab")
                 return decisionHandler(.cancel, preferences)
             }
+            // A target=_blank link goes on to createWebViewWith, which logs where it went.
+            if action.targetFrame != nil { logLinkClick(click, action, s, "this page") }
             decisionHandler(.allow, preferences)
         }
     }
@@ -419,6 +429,13 @@ final class WebKitBrowser: CraBrowser, WKNavigationDelegate, WKUIDelegate, WKDow
                          middleButton: LinkClick.isMiddleButton(webKitButtonNumber: action.buttonNumber))
     }
 
+    /// A click with ⌘, ⌥, ⇧ or the middle button and where it went, for cra.log, with WebKit's own
+    /// button number (a mask: left 1, middle 4).
+    private func logLinkClick(_ click: LinkClick, _ action: WKNavigationAction, _ url: String, _ result: String) {
+        guard click.isModified else { return }
+        delegate?.browser?(self, handledLinkClick: "\(click.keys) (WebKit, button \(action.buttonNumber))", toURL: url, result: result)
+    }
+
     // MARK: Windows and popups
 
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for action: WKNavigationAction,
@@ -429,15 +446,20 @@ final class WebKitBrowser: CraBrowser, WKNavigationDelegate, WKUIDelegate, WKDow
         if AppLinkPrompt.handle(url, from: self, userGesture: true) { return nil }
         // A target=_blank link: a new tab without an opener, like Chrome's noopener default.
         if action.navigationType == .linkActivated {
-            let destination = Self.linkClick(action).destination
-            switch destination {
+            let click = Self.linkClick(action)
+            switch click.destination {
             case .littleWindow where delegate?.browser?(self, opensLittleWindowForURL: url) == true:
-                break
+                logLinkClick(click, action, url, "Little Window")
             case .littleWindow, .newTab:
-                delegate?.browser(self, requestsNewTabWithURL: url, inBackground: destination != .newTab(background: false))
+                let background = click.destination != .newTab(background: false)
+                delegate?.browser(self, requestsNewTabWithURL: url, inBackground: background)
+                logLinkClick(click, action, url, background ? "new tab in the background" : "new tab")
             case .thisPage(let shift):
-                if delegate?.browser?(self, opensPeekForURL: url, shiftClick: shift, newTab: true) != true {
+                if delegate?.browser?(self, opensPeekForURL: url, shiftClick: shift, newTab: true) == true {
+                    logLinkClick(click, action, url, "Peek")
+                } else {
                     delegate?.browser(self, requestsNewTabWithURL: url, inBackground: false)
+                    logLinkClick(click, action, url, "new tab")
                 }
             }
             return nil

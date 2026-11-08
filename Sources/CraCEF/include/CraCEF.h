@@ -129,6 +129,12 @@ typedef NS_ENUM(NSInteger, CraLinkWindow) {
 /// Arc's "Open Little Arc when clicking on links with ⌥⌘ held": a link the user ⌥⌘-clicked. Return
 /// YES to open it in a Little Window; NO opens it as before (a tab).
 - (BOOL)browser:(CraBrowser *)browser opensLittleWindowForURL:(NSString *)url;
+/// A link clicked with ⌘, ⌥, ⇧ or the middle button, and where Cra sent it, for one line in
+/// cra.log: `click` is what the engine reported (WebKit: the keys and the button; Chromium: the
+/// disposition it made of them), `result` where the link went ("Little Window", "new tab in the
+/// background", "Peek", "this page"). A report of a click that went the wrong way then shows what
+/// the engine saw.
+- (void)browser:(CraBrowser *)browser handledLinkClick:(NSString *)click toURL:(NSString *)url result:(NSString *)result;
 /// A main-frame navigation (a link, a redirect, history, an address Cra loaded) before its request
 /// goes out; `method` is its HTTP method. Return YES to cancel it here because Cra shows `url` in
 /// another engine (ProtectedMediaSites: WebKit for DRM services). Called on the main thread from

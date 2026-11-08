@@ -33,6 +33,18 @@ public struct LinkClick: Equatable, Sendable {
         return option && !shift ? .littleWindow : .newTab(background: !shift)
     }
 
+    /// A click with a key or button that can send a link elsewhere than its page: ⌘, ⌥, ⇧ or the
+    /// middle button. cra.log names where those went (BrowserManager).
+    public var isModified: Bool { command || option || shift || middleButton }
+
+    /// The keys and the button for cra.log, the keys in the menus' order: "⌥⌘-click",
+    /// "⇧ middle-click", "middle-click".
+    public var keys: String {
+        let k = (option ? "⌥" : "") + (shift ? "⇧" : "") + (command ? "⌘" : "")
+        guard middleButton else { return k + "-click" }
+        return k.isEmpty ? "middle-click" : k + " middle-click"
+    }
+
     /// The middle button, as WKNavigationAction.buttonNumber reports it: a mask of the button, the
     /// way NSEvent.pressedMouseButtons is (left 1, right 2, middle 4), not NSEvent's buttonNumber
     /// (left 0, right 1, middle 2).

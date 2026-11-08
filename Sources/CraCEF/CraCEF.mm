@@ -1322,17 +1322,25 @@ public:
         }
         // Another app's address (spotify:) opens no tab: Cra asks "Open <app>?" over this page.
         if (g_appLinkHandler && g_appLinkHandler(o, NSStringFromCef(target_url), user_gesture)) return true;
-        if (OpensLittleWindow(o, target_url, target_disposition, user_gesture)) return true;
+        if (OpensLittleWindow(o, target_url, target_disposition, user_gesture)) {
+            LogLinkClick(o, target_url, target_disposition, @"Little Window");
+            return true;
+        }
         // A target=_blank link the user clicked (Shift-clicked: a new window) may open in a
         // Peek; window.open with features (a sign-in popup) is CEF_WOD_NEW_POPUP and stays one.
         if (user_gesture && (target_disposition == CEF_WOD_NEW_FOREGROUND_TAB || target_disposition == CEF_WOD_NEW_WINDOW)
             && [o.delegate respondsToSelector:@selector(browser:opensPeekForURL:shiftClick:newTab:)]
             && [o.delegate browser:o opensPeekForURL:NSStringFromCef(target_url)
                         shiftClick:target_disposition == CEF_WOD_NEW_WINDOW
-                           newTab:target_disposition == CEF_WOD_NEW_FOREGROUND_TAB]) return true;
+                           newTab:target_disposition == CEF_WOD_NEW_FOREGROUND_TAB]) {
+            if (target_disposition == CEF_WOD_NEW_WINDOW) LogLinkClick(o, target_url, target_disposition, @"Peek");
+            return true;
+        }
         BOOL background = (target_disposition == CEF_WOD_NEW_BACKGROUND_TAB);
         CraBrowser* host = [o.delegate browser:o popupHostForURL:NSStringFromCef(target_url) inBackground:background];
         if (!host) return true;  // blocked
+        if (user_gesture && target_disposition != CEF_WOD_NEW_FOREGROUND_TAB)
+            LogLinkClick(o, target_url, target_disposition, background ? @"new tab in the background" : @"new tab");
         client = [host cefClient];
         CraPageSettings(settings);
         if (g_chromeHosting) return false;  // Views path: CraChromeViewDelegate hosts the popup view
@@ -1622,17 +1630,40 @@ public:
             && [o.delegate browser:o opensLittleWindowForURL:NSStringFromCef(url)];
     }
 
+    // A link clicked with ⌘, ⌥, ⇧ or the middle button, as the disposition Blink made of the keys
+    // (NavigationPolicyFromEventModifiers), and where it went: one line in cra.log. Not a plain
+    // target=_blank click, a foreground tab too in OnBeforePopup, so that one isn't logged there.
+    void LogLinkClick(CraBrowser* o, const CefString& url, WindowOpenDisposition disposition, NSString* result) {
+        NSString* click = nil;
+        switch (disposition) {
+            case CEF_WOD_NEW_SPLIT_VIEW: click = @"click for a split view (Chromium)"; break;
+            case CEF_WOD_NEW_BACKGROUND_TAB: click = @"click for a background tab (Chromium)"; break;
+            case CEF_WOD_NEW_FOREGROUND_TAB: click = @"click for a foreground tab (Chromium)"; break;
+            case CEF_WOD_NEW_WINDOW: click = @"click for a new window (Chromium)"; break;
+            default: return;
+        }
+        if ([o.delegate respondsToSelector:@selector(browser:handledLinkClick:toURL:result:)])
+            [o.delegate browser:o handledLinkClick:click toURL:NSStringFromCef(url) result:result];
+    }
+
     bool OnOpenURLFromTab(CefRefPtr<CefBrowser> browser, CefRefPtr<CefFrame> frame, const CefString& target_url,
                           WindowOpenDisposition target_disposition, bool user_gesture) override {
         CraBrowser* o = owner_;
         if (!o) return false;
-        if (OpensLittleWindow(o, target_url, target_disposition, user_gesture)) return true;
+        if (OpensLittleWindow(o, target_url, target_disposition, user_gesture)) {
+            LogLinkClick(o, target_url, target_disposition, @"Little Window");
+            return true;
+        }
         // Shift-click (Chrome: a new window).
         if (user_gesture && target_disposition == CEF_WOD_NEW_WINDOW
             && [o.delegate respondsToSelector:@selector(browser:opensPeekForURL:shiftClick:newTab:)]
-            && [o.delegate browser:o opensPeekForURL:NSStringFromCef(target_url) shiftClick:YES newTab:NO]) return true;
+            && [o.delegate browser:o opensPeekForURL:NSStringFromCef(target_url) shiftClick:YES newTab:NO]) {
+            LogLinkClick(o, target_url, target_disposition, @"Peek");
+            return true;
+        }
         BOOL background = (target_disposition == CEF_WOD_NEW_BACKGROUND_TAB);
         [o.delegate browser:o requestsNewTabWithURL:NSStringFromCef(target_url) inBackground:background];
+        if (user_gesture) LogLinkClick(o, target_url, target_disposition, background ? @"new tab in the background" : @"new tab");
         return true;
     }
 
