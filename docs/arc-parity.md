@@ -53,7 +53,7 @@ Arc's actions (Settings ▸ Shortcuts, 106 rows) that Cra has no action for:
 | View Archive… / Clear Archive (Archive menu) | — | done |
 | Collapse All Folders / Expand All Folders | — | done |
 | Next Tab / Previous Tab, second binding | ⌘} / ⌘{ | done |
-| Go Back / Go Forward, second binding | ⌘← / ⌘→ | missing |
+| Go Back / Go Forward, second binding | ⌘← / ⌘→ | done (bound since the first version, KeyBindings.swift) |
 | Developer Tools, second binding | F12 | done |
 | Go to last Sidebar Item | ⌘9 | done |
 | Switch to Split View 1–4 | ⌃⇧1…4 | done |
@@ -85,7 +85,7 @@ gains "New Profile".
 |---|---|
 | General | (Previews: Gmail done, Tabs pane; Block Cookie Banners done, under Privacy) |
 | Profiles | "New documents" app (Arc's Notes/Easels); Privacy, Passwords, Credit Cards and Notifications done |
-| Links | "Open Little Arc when clicking on links with ⌥⌘ held"; Archive Little Windows after done |
+| Links | (Archive Little Windows after and "Open Little Arc when clicking on links with ⌥⌘ held" done) |
 | Advanced | Shared Quotes (arc.net) (the rest done) |
 | Icon | Cra has its own icon picker |
 
@@ -127,6 +127,8 @@ in this sweep (Essential Shortcuts window, Library pages).
   semantic palette Arc stores per space.
 - Edit ▸ Find ▸ Use Selection to Find and Jump to Selection (⌘J).
 - Previews for a Gmail favorite: unread mail in Arc's card on hover (Settings ▸ Tabs).
+- Settings ▸ Tabs ▸ Links ▸ Open a Little Window when clicking on links with ⌥⌘ held (Arc's ⌥⌘-click, on
+  by default): plain and target=_blank links, Chromium and WebKit pages.
 - Boosts: New Boost, the editor, Zap, CSS/JS code, Library ▸ Boosts, Window ▸ View Boosts…, the Advanced switch.
 - Window dragging from the top of webpages (Victor's choice, 7 Nov: on, as in Arc).
 - AppleScript, Arc's dictionary (Victor's choice, 7 Nov: like Arc, JavaScript off by default).

@@ -40,6 +40,9 @@ struct TabsPane: View {
                 // Arc's "Open Little Arc when I press ⌥⌘N" (#195): New Little Window's shortcut from any app.
                 SettingsCheckbox(title: "Open a Little Window when I press \(KeyBindingRegistry.shared.action("newLittleWindow")?.primary?.display ?? "⌥⌘N") in any app",
                                  isOn: $store.settings.littleWindowShortcutEverywhere)
+                // Arc: "Open Little Arc when clicking on links with ⌥⌘ held" (LittleWindowClick).
+                SettingsCheckbox(title: "Open a Little Window when clicking on links with ⌥⌘ held",
+                                 isOn: $store.settings.littleWindowOnOptionCommandClick)
                 // Arc: "Archive Little Arcs after:" 1 hour, 6 hours (default), 12 hours.
                 HStack(spacing: 6) {
                     Text("Archive Little Windows after:")
