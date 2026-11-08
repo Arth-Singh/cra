@@ -33,6 +33,8 @@ public struct LinkClick: Equatable, Sendable {
         return option && !shift ? .littleWindow : .newTab(background: !shift)
     }
 
-    /// The middle button, as WKNavigationAction.buttonNumber reports it.
-    public static func isMiddleButton(webKitButtonNumber: Int) -> Bool { webKitButtonNumber == 2 }
+    /// The middle button, as WKNavigationAction.buttonNumber reports it: a mask of the button, the
+    /// way NSEvent.pressedMouseButtons is (left 1, right 2, middle 4), not NSEvent's buttonNumber
+    /// (left 0, right 1, middle 2).
+    public static func isMiddleButton(webKitButtonNumber: Int) -> Bool { webKitButtonNumber == 1 << 2 }
 }

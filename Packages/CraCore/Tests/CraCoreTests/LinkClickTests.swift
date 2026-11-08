@@ -24,4 +24,13 @@ struct LinkClickTests {
     func whereAClickGoes(_ c: (command: Bool, option: Bool, shift: Bool, middle: Bool, goes: LinkClick.Destination)) {
         #expect(LinkClick(command: c.command, option: c.option, shift: c.shift, middleButton: c.middle).destination == c.goes)
     }
+
+    /// WKNavigationAction.buttonNumber is a mask of the button, the way NSEvent.pressedMouseButtons
+    /// is: left 1, right 2, middle 4, as a WKWebView reported real clicks sent to it (8 Nov 2026).
+    /// Read as NSEvent's number (middle 2), a middle-click on a WebKit page loaded the link in
+    /// place, and ⌥ with the middle button opened no Little Window.
+    @Test(arguments: [(number: 1, middle: false), (number: 2, middle: false), (number: 4, middle: true), (number: 0, middle: false)])
+    func webKitsMiddleButton(_ button: (number: Int, middle: Bool)) {
+        #expect(LinkClick.isMiddleButton(webKitButtonNumber: button.number) == button.middle)
+    }
 }
