@@ -137,7 +137,7 @@ enum Diagnostics {
         panel.nameFieldStringValue = fileName
         panel.allowedContentTypes = [.zip]
         panel.directoryURL = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first
-        NSApp.activate()
+        NSApp.bringCraForward()
         return panel.runModal() == .OK ? panel.url : nil
     }
 

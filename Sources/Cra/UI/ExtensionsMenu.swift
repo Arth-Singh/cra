@@ -159,6 +159,6 @@ final class ExtensionsMenu: NSObject, NSMenuDelegate, NSMenuItemValidation {
     private func openTab(_ url: String) {
         app.store.createTab(url: url, select: true)
         app.main.showWindow(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        NSApp.bringCraForward(ignoringOtherApps: true)
     }
 }

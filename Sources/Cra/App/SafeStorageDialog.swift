@@ -29,7 +29,7 @@ enum SafeStorageDialog {
                 window.orderFrontRegardless()
             }
         }
-        NSApp.activate()
+        NSApp.bringCraForward()
         let response = dialog.runModal(over: nil)
         return refusal != .otherEngine && response == .alertFirstButtonReturn
     }

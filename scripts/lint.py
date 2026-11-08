@@ -30,6 +30,11 @@ gains a finding fails, one that loses one is reported so the baseline can come d
   perf-no-network
       Networking (URLSession, CFNetwork, Network.framework, sockets) under either Perf folder: the
       performance recorder never sends anything anywhere (#91); the export is the user's to share.
+  activate-outside-helper
+      NSApp.activate outside App/BringForward.swift. A test copy run behind the user's apps
+      (CRA_TEST_BACKGROUND) must never come to the front, on their Mac too: a click or key press
+      meant for their own Cra lands in it. NSApp.bringCraForward() is the same call in the
+      user's Cra and does nothing in the test copy.
   perf-boundary
       The performance recorder stays removable (#91, docs/performance.md): outside its two folders
       only the files in PERF_CALLERS reach it, and inside Sources/Cra/Perf only PerfCEF.swift sees
@@ -48,6 +53,7 @@ BASELINE = os.path.join(ROOT, "Tests", "lint-baseline.txt")
 LAYER_SET = re.compile(r"\b(?!layer\b)(\w*[Ll]ayer)\.(backgroundColor|borderColor|colors|opacity|shadowColor|fillColor|strokeColor)\s*=")
 FUNC_START = re.compile(r"^\s*(?:@\w+\s+)*(?:(?:private|fileprivate|internal|public|override|static|final|class|nonisolated|convenience|required|@objc)\s+)*(func\s|init[(?!])")
 CORE_IMPORT = re.compile(r"^\s*(?:@\w+\s+)*import\s+(?:(?:struct|class|enum|protocol|func|var|let|typealias)\s+)?(AppKit|Cocoa|SwiftUI|UIKit|CraCEF)\b")
+ACTIVATE = re.compile(r"\bNSApp(?:lication\.shared)?\.activate\(")
 PERF_DIRS = ("Perf/",)
 PERF_CORE = os.path.join("Packages", "CraCore", "Sources", "CraCore", "Perf") + os.sep
 PERF_CALLERS = {"App/main.swift", "App/AppDelegate.swift", "Services/BrowserManager.swift", "Services/Persistence.swift",
@@ -103,6 +109,8 @@ def findings():
                 hit("wall-clock-in-decision", rel, i)
             if "withObservationTracking" in line:
                 hit("raw-observation-tracking", rel, i)
+            if ACTIVATE.search(line) and rel != "App/BringForward.swift":
+                hit("activate-outside-helper", rel, i)
             if rel.startswith(PERF_DIRS):
                 if NETWORK.search(line):
                     hit("perf-no-network", rel, i)

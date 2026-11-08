@@ -687,7 +687,7 @@ final class ImportWindowController: NSWindowController, NSWindowDelegate {
             window.center()
         }
         window.makeKeyAndOrderFront(nil)
-        NSApp.activate(ignoringOtherApps: true)
+        NSApp.bringCraForward(ignoringOtherApps: true)
     }
 
     func windowWillClose(_ notification: Notification) { onClosed() }
