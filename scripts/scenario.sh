@@ -1,7 +1,7 @@
 #!/bin/bash
 # Drives the real Cra.app through a user journey (Tests/Scenarios/<name>.scenario) on a
 # throwaway profile, behind your other windows, then checks the same invariants for every
-# scenario: still running, no new crash report, no fault in cra.log, the sidebar sound,
+# scenario: still running, never the front app, no new crash report, no fault in cra.log, the sidebar sound,
 # main-thread stalls and memory inside the scenario's budget, helper processes back to
 # baseline after tabs close, and a clean quit. Never asserts on pixels.
 #
@@ -94,9 +94,10 @@ if grep -q '^home$' "$FILE"; then
   mkdir -p "$DATA/home/Downloads"
   app_env+=(CFFIXED_USER_HOME="$DATA/home")
 fi
-# Past onboarding, and nothing taken from this Mac's Arc (its toolbar default) unless asked.
+# Past onboarding, nothing taken from this Mac's Arc (its toolbar default) unless asked, and no
+# video popping out in Picture in Picture over the windows of whoever runs the tests.
 if ! grep -q '^fresh' "$FILE" && [ ! -f "$DATA/settings.json" ]; then
-  echo '{"hasSeenImportPrompt": true, "toolbarDefaultMigrated": true, "showToolbar": false}' > "$DATA/settings.json"
+  echo '{"hasSeenImportPrompt": true, "toolbarDefaultMigrated": true, "showToolbar": false, "autoPictureInPicture": false}' > "$DATA/settings.json"
 fi
 
 PIDS=()
@@ -153,8 +154,14 @@ CRA_DATA_DIR="$DATA" CRA_COMMAND_FILE="$CMD" CRA_HITCH_LOG="$HITCH" CRA_TEST_BAC
   "${app_env[@]}" "$APP/Contents/MacOS/Cra" ${app_args[@]+"${app_args[@]}"} >"$OUT/stdout.log" 2>&1 &
 PID=$!
 PIDS+=("$PID")
+# The front app's pid, twice a second: a test Cra runs behind the apps of whoever runs the tests,
+# on their own Mac too, and never takes focus from them (checked after the quit).
+FRONT="$OUT/front.log"
+(while :; do lsappinfo info -only pid "$(lsappinfo front)"; echo; sleep 0.5; done) > "$FRONT" 2>/dev/null &
+FRONT_WATCH=$!
 
 cleanup() {
+  kill "$FRONT_WATCH" 2>/dev/null
   for p in "${PIDS[@]}"; do kill -KILL "$p" 2>/dev/null; done
   kill "$SERVER" "$STALLER" 2>/dev/null
   cp "$DATA"/cra*.log "$OUT/" 2>/dev/null
@@ -312,6 +319,16 @@ if [ "$PID" = "${PIDS[0]}" ] && ! alive; then
 fi
 count_faults
 [ "$FAULTS" -eq 0 ] || problem "$FAULTS fault line(s) in cra.log (faults.txt)"
+# Never in front: a click or key press meant for the user's own windows would land in this copy.
+# A scenario that takes over the screen is in front on purpose.
+kill "$FRONT_WATCH" 2>/dev/null
+if ! grep -q '^requires screen' "$FILE"; then
+  for p in "${PIDS[@]}"; do
+    if grep -q "^\"pid\"=$p\$" "$FRONT"; then
+      problem "Cra (pid $p) came to the front (front.log); a test copy activates only through NSApp.bringCraForward, which leaves it behind"
+    fi
+  done
+fi
 
 # Crash reports written for any of this run's processes (ReportCrash needs a moment).
 sleep 3

@@ -1,7 +1,9 @@
 # A pinned tab playing a video, then Add Split View (⌥Return in the command bar takes the same
 # path): the split shows a Today copy of the page and the pinned tab sleeps, as in Arc. Before
 # 4 Nov 2026 the pinned tab's video also opened in Picture in Picture, two videos at once
-# (reported on X).
+# (reported on X). Auto Picture in Picture is on here, as in a new profile (the other scenarios
+# turn it off).
+seed settings.json {"hasSeenImportPrompt": true, "toolbarDefaultMigrated": true, "showToolbar": false, "autoPictureInPicture": true}
 cra://open?url=file://${FIXTURES}/Pages/video.html
 expect-log loaded file:
 cra://action/pinTab
