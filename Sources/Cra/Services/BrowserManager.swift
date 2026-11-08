@@ -613,9 +613,10 @@ final class BrowserManager: NSObject, @preconcurrency CraBrowserDelegate {
     }
 
     /// In Cra's isolated world: "" when the page has nothing to lose, else why it must stay:
-    /// media playing, or text the user typed that is still there on the same URL (PageScript
-    /// records trusted input; values a framework set, or text submitted by a navigation, don't
-    /// count).
+    /// media playing, or text the user typed that is still there on the same URL, in the page or
+    /// in any of its frames of the same origin (PageScript records trusted input in each frame;
+    /// values a framework set, or text submitted by a navigation, don't count). A frame of another
+    /// origin can't be read from here, but frames inside it can when they are of the page's origin.
     private static let sleepProbe: String = {
         let js = """
         (() => {
@@ -624,11 +625,17 @@ final class BrowserManager: NSObject, @preconcurrency CraBrowserDelegate {
             : e.type === 'checkbox' || e.type === 'radio' ? e.checked !== e.defaultChecked
             : e.tagName === 'SELECT' ? [...e.options].some(o => o.selected !== o.defaultSelected)
             : (e.value ?? '') !== '';
-          for (const [e, href] of window.__cra?.typed ?? []) {
-            if (!e.isConnected || href !== location.href) { window.__cra.typed.delete(e); continue; }
-            if (edited(e)) return 'typed';
-          }
-          return '';
+          const typed = (w, depth) => {
+            let cra, href;
+            try { cra = w.__cra; href = w.location.href; } catch {}
+            for (const [e, at] of cra?.typed ?? []) {
+              if (!e.isConnected || at !== href) { cra.typed.delete(e); continue; }
+              if (edited(e)) return true;
+            }
+            for (let i = 0; depth < 8 && i < w.length; i++) if (typed(w[i], depth + 1)) return true;
+            return false;
+          };
+          return typed(window, 0) ? 'typed' : '';
         })()
         """
         return evaluateParams(js, userGesture: false)

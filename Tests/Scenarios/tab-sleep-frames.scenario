@@ -1,0 +1,61 @@
+# Text the user typed into a page's iframe keeps the tab awake, as text in the page itself does
+# (tab-sleep-probe.scenario, #32). The sleep probe read only the top frame's record of typing, so a
+# draft in an embedded editor or comment box let the tab sleep and lose it. The pages are page.html
+# in iframes of itself: ?frame=N (same origin, N deep) and ?xframe=1 (localhost: another site, out
+# of process). Typing is DevTools' Input.insertText, which goes to the focused frame. Before each
+# sleep pass, Cra's isolated world shows where the typing was recorded (each frame has its own
+# __cra). expect-log and reject-log read the whole log, and the lines name only the host, so the
+# rows that sleep come first and the one that holds comes last.
+budget rss=900 stalls50=30
+pace 0.5
+
+# A field that the page's own script fills inside an iframe: the tab still sleeps.
+cra://open?url=${PAGE}?n=scripted%26frame=1
+expect-log loaded 127\.0\.0\.1
+wait 1
+cra://debug?cdp=Runtime.evaluate&params={"expression":"(i=>{i.value='set by the page';i.dispatchEvent(new Event('input',{bubbles:true}));return 'scripted:'+i.value})(document.querySelector('iframe').contentDocument.querySelector('input'))"}
+expect-log Cra cdp Runtime.evaluate .*"value":"scripted:set by the page"
+cra://debug?isolatedJS='records:top'+window.__cra.typed.size+',frame'+frames[0].__cra.typed.size
+expect-log Cra isolatedJS → .*"value":"records:top0,frame0"
+cra://open?url=${PAGE}?n=front
+expect-log loaded 127\.0\.0\.1
+wait 2
+cra://debug?sleepTabs=1
+expect-log tab sleep (unloads|discards)( \(its renderer ended\))? 127\.0\.0\.1
+reject-log tab sleep keeps 127\.0\.0\.1 awake
+
+# Known gap, kept on purpose: a frame of another site. Cra registers its document-start scripts on
+# the page's own DevTools target, so they don't run in an out-of-process frame (the frame says
+# scripts:false), and the probe can't read a frame of another origin either. The typing is there,
+# and the tab still sleeps. When this row fails because the tab stays awake, the gap is closed.
+cra://open?url=${PAGE}?n=xframed%26xframe=1
+expect-log loaded 127\.0\.0\.1
+wait 2
+cra://debug?cdp=Runtime.evaluate&params={"expression":"document.querySelector('iframe').focus(),'focused:'+document.activeElement.tagName"}
+expect-log Cra cdp Runtime.evaluate .*"value":"focused:IFRAME"
+cra://debug?cdp=Input.insertText&params={"text":"a cross-site draft"}
+cra://debug?cdp=Runtime.evaluate&params={"expression":"new Promise(r=>{addEventListener('message',e=>r(String(e.data)),{once:true});frames[0].postMessage('fixture:state','*')})","awaitPromise":true}
+expect-log Cra cdp Runtime.evaluate .*"value":"scripts:false,value:a cross-site draft,focused:INPUT"
+cra://open?url=${PAGE}?n=front2
+expect-log loaded 127\.0\.0\.1
+wait 2
+cra://debug?sleepTabs=1
+reject-log tab sleep keeps 127\.0\.0\.1 awake
+
+# Text typed into a field two same-origin frames deep: the tab stays awake. The probe walks the
+# first frame to reach it.
+cra://open?url=${PAGE}?n=nested%26frame=2
+expect-log loaded 127\.0\.0\.1
+wait 1
+cra://debug?cdp=Runtime.evaluate&params={"expression":"(d=>{d.querySelector('input').focus();return 'focused:'+d.activeElement.tagName+','+document.activeElement.tagName})(document.querySelector('iframe').contentDocument.querySelector('iframe').contentDocument)"}
+expect-log Cra cdp Runtime.evaluate .*"value":"focused:INPUT,IFRAME"
+cra://debug?cdp=Input.insertText&params={"text":"a draft"}
+cra://debug?cdp=Runtime.evaluate&params={"expression":"'typed:'+document.querySelector('iframe').contentDocument.querySelector('iframe').contentDocument.querySelector('input').value"}
+expect-log Cra cdp Runtime.evaluate .*"value":"typed:a draft"
+cra://debug?isolatedJS='records:top'+window.__cra.typed.size+',frame'+frames[0].__cra.typed.size+',nested'+frames[0][0].__cra.typed.size
+expect-log Cra isolatedJS → .*"value":"records:top0,frame0,nested1"
+cra://open?url=${PAGE}?n=front3
+expect-log loaded 127\.0\.0\.1
+wait 2
+cra://debug?sleepTabs=1
+expect-log tab sleep keeps 127\.0\.0\.1 awake: typed
