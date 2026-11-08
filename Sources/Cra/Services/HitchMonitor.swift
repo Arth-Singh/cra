@@ -9,9 +9,11 @@ enum HitchMonitor {
     private static let lock = NSLock()
     nonisolated(unsafe) private static var handle: FileHandle?
 
-    /// CRA_TEST_BACKGROUND=1: a test instance measured behind other apps. Scripted commands
-    /// don't bring it to the front, and App Nap doesn't slow it down.
-    static let background = ProcessInfo.processInfo.environment["CRA_TEST_BACKGROUND"] == "1"
+    /// The copy of Cra this is, if the tests started it.
+    static let testInstance = TestInstance(environment: ProcessInfo.processInfo.environment)
+    /// CRA_TEST_BACKGROUND=1: a test instance measured behind other apps. Nothing brings it to
+    /// the front (`bringCraForward`), and App Nap doesn't slow it down.
+    static var background: Bool { testInstance.background }
     nonisolated(unsafe) private static var activity: NSObjectProtocol?
 
     static func startIfRequested() {
