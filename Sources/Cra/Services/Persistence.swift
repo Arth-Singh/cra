@@ -51,12 +51,16 @@ enum AppPaths {
 /// took ~30 ms there, two to four dropped frames after every tab switch.
 private let persistenceQueue = DispatchQueue(label: "dk.kildahl.cra.persistence", qos: .utility)
 
-/// One JSON file, loaded once, saved with a short debounce. Writes are atomic
-/// and the previous version is kept as `<name>.bak`, which is what Arc does
-/// with its timestamped Storable*.json copies, minus the pile-up.
+/// One JSON file, loaded once, saved with a short debounce (at most 10 s after the first save
+/// not yet written: SaveDebounce). Writes are atomic and the previous version is kept as
+/// `<name>.bak`, which is what Arc does with its timestamped Storable*.json copies, minus the
+/// pile-up.
 final class JSONStore<T: Codable> {
     let url: URL
     private var pending: DispatchWorkItem?
+    /// Asked on the caller's thread, written on persistenceQueue.
+    private let debounceLock = NSLock()
+    private var debounce = SaveDebounce()
     private let encoder: JSONEncoder = {
         let e = JSONEncoder()
         e.outputFormatting = [.prettyPrinted, .sortedKeys]
@@ -83,15 +87,21 @@ final class JSONStore<T: Codable> {
 
     func save(_ value: T, delay: TimeInterval = 0.4) {
         pending?.cancel()
-        let item = DispatchWorkItem { [weak self] in self?.write(value) }
+        let due = debounceLock.withLock { debounce.request(at: Date(), delay: delay) }
+        let item = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.debounceLock.withLock { self.debounce.written() }
+            self.write(value)
+        }
         pending = item
-        persistenceQueue.asyncAfter(deadline: .now() + delay, execute: item)
+        persistenceQueue.asyncAfter(deadline: .now() + max(0, due.timeIntervalSinceNow), execute: item)
     }
 
     /// Writes before returning (quit, launch-time bookkeeping), after any write in flight.
     func saveNow(_ value: T) {
         pending?.cancel()
         pending = nil
+        debounceLock.withLock { debounce.written() }
         persistenceQueue.sync { write(value) }
     }
 

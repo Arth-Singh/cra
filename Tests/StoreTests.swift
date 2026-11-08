@@ -40,6 +40,7 @@ enum StoreTests {
         stampsUseTheClock()
         persistenceFaults()
         incognitoStaysOffDisk()
+        saveWaitsAtMostTenSeconds()
         pinnedURL()
         tabFavicons()
         moveTabToSpace()
@@ -649,6 +650,34 @@ enum StoreTests {
         expect(CraLog.faultCount == before + 2, "a value JSON can't hold is a fault, not a silent skip")
         JSONStore<[String]>("missing-folder/x.json").saveNow(["x"])
         expect(CraLog.faultCount == before + 3, "a write that fails is a fault")
+    }
+
+    /// A tab whose title changes more often than every 2 s (an unread count, a timer) put off
+    /// every sidebar.json write, a new tab's too, for as long as it kept changing: a crash then
+    /// lost them all (Sentinel's audit, item 5). The write comes at most 10 s after the first save.
+    @MainActor
+    private static func saveWaitsAtMostTenSeconds() {
+        let store = AppComposition(clock: ManualScheduler()).store
+        let started = Date()
+        let tab = store.createTab(url: "https://example.com/max-wait")
+        // JSONEncoder writes "/" as "\/".
+        func saved() -> Bool {
+            ((try? String(contentsOf: AppPaths.file("sidebar.json"), encoding: .utf8)) ?? "").replacingOccurrences(of: "\\/", with: "/")
+                .contains("https://example.com/max-wait")
+        }
+        var unread = 0
+        // Saves run on the persistence queue's own clock, not the store's: real time.
+        while !saved(), Date().timeIntervalSince(started) < 12 {
+            unread += 1
+            store.updateTab(tab.id, title: "Inbox (\(unread))")
+            Thread.sleep(forTimeInterval: 0.5)
+        }
+        let waited = Date().timeIntervalSince(started)
+        // Slack for a utility queue under load; main's JSONStore fails through saved() == false.
+        expect(saved() && waited < 11.5,
+               "a title changing every 0.5 s still lets a new tab reach sidebar.json within 10 s (waited \(String(format: "%.1f", waited)) s)")
+        // Its last title's save would land in the next test's file.
+        store.saveAll()
     }
 
     /// Incognito tabs never reach sidebar.json (#46's review: updateTab saved every item), and
