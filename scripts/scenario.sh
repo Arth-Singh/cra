@@ -166,6 +166,7 @@ if [ "${CRA_SCENARIO_SCREEN:-}" != "1" ]; then
   fi
   (while :; do front_pid; echo; sleep 0.5; done) > "$FRONT" 2>/dev/null &
   FRONT_WATCH=$!
+  disown "$FRONT_WATCH"
 fi
 
 cleanup() {
