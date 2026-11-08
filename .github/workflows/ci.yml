@@ -90,6 +90,9 @@ jobs:
       - name: Scenario
         continue-on-error: true
         timeout-minutes: 5
+        env:
+          # The runner's screen belongs to the tests (scripts/scenario.sh).
+          CRA_SCENARIO_SCREEN: "1"
         run: scripts/scenario.sh sleep-tabs
 
       - name: Keep scenario logs

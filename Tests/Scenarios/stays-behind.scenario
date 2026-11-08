@@ -1,0 +1,20 @@
+# A test copy of Cra runs behind the apps of whoever runs the tests, on their own Mac too
+# (CRA_TEST_BACKGROUND, every scenario), and must never come to the front: scripts/scenario.sh
+# fails a run whose Cra was ever the front app. CraApplication (CraCEF.mm) stops every activation
+# a test copy asks for, Chromium's too. This scenario takes the paths that ask for one: New Window,
+# a Little Window and the command bar.
+budget rss=700 stalls50=10
+cra://open?url=${PAGE}?n=first
+expect-log loaded 127\.0\.0\.1 \(HTTP 200\)
+cra://action/newWindow
+wait 2
+cra://debug?browserWindows=two
+expect-log browser windows two: count=2
+cra://open?url=${PAGE}?n=little&little=1
+wait 3
+cra://debug?cdp=Runtime.evaluate&target=little&params={"expression":"'little:'+location.search"}
+expect-log Cra cdp Runtime.evaluate .*"value":"little:\?n=little"
+cra://commandbar
+wait 1
+cra://dismiss
+wait 2
