@@ -24,6 +24,10 @@ public struct LittleWindowOpenTiming: Equatable, Sendable {
     public let requested: UInt64
     public let requestedWallMs: Double
     public private(set) var steps: [Step: UInt64] = [:]
+    /// At the end of show(): whether Cra was the active app and the window key. macOS can refuse
+    /// a test instance's activation; the window may then open behind others, occluded.
+    public private(set) var shownActive: Bool?
+    public private(set) var shownKey: Bool?
 
     public init(source: String, requested: UInt64, requestedWallMs: Double) {
         self.source = source
@@ -45,6 +49,13 @@ public struct LittleWindowOpenTiming: Equatable, Sendable {
         if steps[step] == nil { steps[step] = time }
     }
 
+    /// The first show counts, as for `mark`.
+    public mutating func markShown(active: Bool, key: Bool) {
+        guard shownActive == nil else { return }
+        shownActive = active
+        shownKey = key
+    }
+
     /// Milliseconds from the request to `step`; nil until it happens.
     public func ms(_ step: Step) -> Double? {
         steps[step].map { Double(Int64(bitPattern: $0 &- requested)) / 1e6 }
@@ -53,8 +64,10 @@ public struct LittleWindowOpenTiming: Equatable, Sendable {
     /// One line. Every value is ms after the request, except `make` and `show` (how long that
     /// step took), `make_to_nav` (how long making the page held its navigation back: what a page
     /// made ahead of time saves) and `nav_to_paint` (the page's own first paint). "-" is a step
-    /// that hasn't happened, or a page that didn't answer.
-    public func readout(page: LittleWindowPagePaint?) -> String {
+    /// that hasn't happened, or a page that didn't answer. `onScreen`: the window wasn't occluded
+    /// when the readout was asked for. `vis` is the page's visibility states (state@ms after its
+    /// navigation start); `hidden_before_paint` says whether one hid it before its first paint.
+    public func readout(page: LittleWindowPagePaint?, onScreen: Bool? = nil) -> String {
         let navStart = page.map { $0.timeOriginMs - requestedWallMs }
         let firstPaint = page?.firstPaintMs.flatMap { fp in navStart.map { $0 + fp } }
         let fields: [(String, String)] = [
@@ -71,6 +84,11 @@ public struct LittleWindowOpenTiming: Equatable, Sendable {
             ("first_paint", Self.format(firstPaint)),
             ("fcp", Self.format(page?.firstContentfulPaintMs.flatMap { fcp in navStart.map { $0 + fcp } })),
             ("visible", page.map { $0.visible ? "1" : "0" } ?? "-"),
+            ("active", Self.flag(shownActive)),
+            ("key", Self.flag(shownKey)),
+            ("on_screen", Self.flag(onScreen)),
+            ("vis", page?.visibilityChanges.map { $0.isEmpty ? "-" : $0.map { "\($0.state)@\(Self.format($0.ms))" }.joined(separator: ",") } ?? "-"),
+            ("hidden_before_paint", Self.flag(page?.hiddenBeforePaint)),
             ("url", page?.url ?? "-"),
         ]
         return "Cra little timing: " + fields.map { "\($0.0)=\($0.1)" }.joined(separator: " ")
@@ -80,6 +98,8 @@ public struct LittleWindowOpenTiming: Equatable, Sendable {
         guard let a, let b else { return nil }
         return a - b
     }
+
+    private static func flag(_ b: Bool?) -> String { b.map { $0 ? "1" : "0" } ?? "-" }
 
     private static func format(_ ms: Double?) -> String {
         ms.map { String(format: "%.1f", $0) } ?? "-"
@@ -96,13 +116,35 @@ public struct LittleWindowPagePaint: Equatable, Sendable {
     public let firstContentfulPaintMs: Double?
     public let visible: Bool
     public let url: String
+    /// The page's visibility-state performance entries in order (the first is the state it
+    /// started in); nil when the engine has none. Chromium hides a page whose window is occluded.
+    public let visibilityChanges: [VisibilityChange]?
 
-    public init(timeOriginMs: Double, firstPaintMs: Double?, firstContentfulPaintMs: Double?, visible: Bool, url: String) {
+    public struct VisibilityChange: Equatable, Sendable {
+        public let state: String
+        public let ms: Double
+
+        public init(state: String, ms: Double) {
+            self.state = state
+            self.ms = ms
+        }
+    }
+
+    public init(timeOriginMs: Double, firstPaintMs: Double?, firstContentfulPaintMs: Double?, visible: Bool, url: String,
+                visibilityChanges: [VisibilityChange]? = nil) {
         self.timeOriginMs = timeOriginMs
         self.firstPaintMs = firstPaintMs
         self.firstContentfulPaintMs = firstContentfulPaintMs
         self.visible = visible
         self.url = url
+        self.visibilityChanges = visibilityChanges
+    }
+
+    /// Whether the page was hidden at any time up to its first paint (or ever, before it painted);
+    /// nil without visibility entries.
+    public var hiddenBeforePaint: Bool? {
+        guard let changes = visibilityChanges, !changes.isEmpty else { return nil }
+        return changes.contains { $0.state == "hidden" && $0.ms <= (firstPaintMs ?? .infinity) }
     }
 
     public static let script = """
@@ -112,7 +154,8 @@ public struct LittleWindowPagePaint: Equatable, Sendable {
             const paint = name => performance.getEntriesByName(name, 'paint')[0]?.startTime ?? null;
             if (paint('first-paint') === null && Date.now() - since < 3000) { setTimeout(look, 50); return; }
             done(JSON.stringify({timeOrigin: performance.timeOrigin, firstPaint: paint('first-paint'),
-              fcp: paint('first-contentful-paint'), visible: document.visibilityState === 'visible', url: location.href}));
+              fcp: paint('first-contentful-paint'), visible: document.visibilityState === 'visible', url: location.href,
+              vis: performance.getEntriesByType('visibility-state').map(e => [e.name, e.startTime])}));
           };
           look();
         })
@@ -126,7 +169,12 @@ public struct LittleWindowPagePaint: Equatable, Sendable {
               let fields = try? JSONSerialization.jsonObject(with: Data(value.utf8)) as? [String: Any],
               let timeOrigin = fields["timeOrigin"] as? Double,
               let url = fields["url"] as? String else { return nil }
+        let changes = (fields["vis"] as? [[Any]])?.compactMap { entry -> VisibilityChange? in
+            guard entry.count == 2, let state = entry[0] as? String, let ms = entry[1] as? Double else { return nil }
+            return VisibilityChange(state: state, ms: ms)
+        }
         self.init(timeOriginMs: timeOrigin, firstPaintMs: fields["firstPaint"] as? Double,
-                  firstContentfulPaintMs: fields["fcp"] as? Double, visible: fields["visible"] as? Bool ?? false, url: url)
+                  firstContentfulPaintMs: fields["fcp"] as? Double, visible: fields["visible"] as? Bool ?? false, url: url,
+                  visibilityChanges: changes)
     }
 }

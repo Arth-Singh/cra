@@ -13,9 +13,11 @@ expect-log Cra little timing: no Little Window
 cra://open?url=${PAGE}?n=timed&little=1
 wait 3
 cra://debug?littleTiming=1
-expect-log Cra little timing: source=cra-open make_start=[0-9.]+ make=[0-9.]+ host_window=\S+ show_start=[0-9.]+ show=[0-9.]+ loading=[0-9.]+ nav_start=[0-9.]+ make_to_nav=-?[0-9.]+ nav_to_paint=\S+ first_paint=\S+ fcp=\S+ visible=[01] url=http://127\.0\.0\.1:[0-9]+/.*n=timed
-cra://action/closeTab
+expect-log Cra little timing: source=cra-open make_start=[0-9.]+ make=[0-9.]+ host_window=\S+ show_start=[0-9.]+ show=[0-9.]+ loading=[0-9.]+ nav_start=[0-9.]+ make_to_nav=-?[0-9.]+ nav_to_paint=\S+ first_paint=\S+ fcp=\S+ visible=[01] active=\S+ key=\S+ on_screen=\S+ vis=\S+ hidden_before_paint=\S+ url=http://127\.0\.0\.1:[0-9]+/.*n=timed
+cra://debug?littleClose=1
 wait 1
+cra://debug?windows=1
+expect-log Cra windows: little=0 tabs=
 
 # A Little Window Cra opens itself (⌥⌘N) has no request to time.
 cra://action/newLittleWindow

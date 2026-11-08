@@ -875,6 +875,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                 if let w = littleWindows.last { w.logOpenTiming() } else { NSLog("Cra little timing: no Little Window") }
                 return
             }
+            // littleClose=1: closes the newest Little Window whichever window is key. An action can't:
+            // while Cra is inactive, perform() routes to the main window (keyLittleWindow skips panels).
+            if dict["littleClose"] != nil { littleWindows.last?.closeWindow(); return }
             // Tests that leave the pointer alone: scroll=dy,steps,x,y scrolls the scroll view at a
             // point of the main window (from its top left); swipe=dx,steps plays a space swipe.
             if let g = dict["scroll"]?.split(separator: ",").compactMap({ Double($0) }), g.count == 4, let w = main.window {

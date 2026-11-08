@@ -400,7 +400,10 @@ final class LittleWindowController: NSWindowController, NSWindowDelegate, @preco
     func show() {
         guard let window else { return }
         openTiming?.mark(.showStart)
-        defer { openTiming?.mark(.showEnd) }
+        defer {
+            openTiming?.mark(.showEnd)
+            openTiming?.markShown(active: NSApp.isActive, key: window.isKeyWindow)
+        }
         let final = window.frame
         let mouse = NSEvent.mouseLocation
         var start = NSRect(x: mouse.x - 24, y: mouse.y - 15, width: 48, height: 30)
@@ -435,8 +438,9 @@ final class LittleWindowController: NSWindowController, NSWindowDelegate, @preco
             NSLog("Cra little timing: not timed (a Peek, a popup or a window Cra opened itself)")
             return
         }
+        let onScreen = window.map { $0.occlusionState.contains(.visible) }
         guard let browser, browser.isCreated, !browser.isClosed else {
-            NSLog("%@", timing.readout(page: nil))
+            NSLog("%@", timing.readout(page: nil, onScreen: onScreen))
             return
         }
         let params = try? JSONSerialization.data(withJSONObject: ["expression": LittleWindowPagePaint.script, "returnByValue": true,
@@ -445,7 +449,7 @@ final class LittleWindowController: NSWindowController, NSWindowDelegate, @preco
         let finish: (LittleWindowPagePaint?) -> Void = { page in
             guard !answered else { return }
             answered = true
-            NSLog("%@", timing.readout(page: page))
+            NSLog("%@", timing.readout(page: page, onScreen: onScreen))
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 4) { finish(nil) }
         browser.sendDevToolsMethod("Runtime.evaluate", params: params.flatMap { String(data: $0, encoding: .utf8) } ?? "{}") { result, _ in
