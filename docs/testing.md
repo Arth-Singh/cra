@@ -60,7 +60,8 @@ no page content), so it checks geometry, ink and fills.
   the pure code must fail a test. About a thousand mutants are more than the CI job's hour, so
   it tests a shuffled sample for 70 minutes (`CRA_MUTATION_MINUTES`), a new order each ISO week.
 - **Scenario invariants**, the same for every scenario: the app is still running at the end,
-  no new crash report for its processes, no `fault:` line in `cra.log`, the sidebar sound
+  it was never the front app (`front.log`; not with `CRA_SCENARIO_SCREEN=1`, as on CI), no new
+  crash report for its processes, no `fault:` line in `cra.log`, the sidebar sound
   (`SidebarIntegrity`), main-thread stalls inside the scenario's budget, Cra's memory inside
   its budget, helper processes back to baseline five seconds after tabs close, the performance
   recorder under 0.1 % of a core (`selfCost.cpuPct` in its perf.json, `budget perfcpu=`) with its
