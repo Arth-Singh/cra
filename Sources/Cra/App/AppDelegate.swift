@@ -1013,9 +1013,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
                 return
             }
             // One tab-sleeping pass with a short threshold (seconds), so it can be tried without waiting
-            // or opening 11 tabs: the 10 tabs used last aren't kept.
+            // or opening 11 tabs: the 10 tabs used last aren't kept. With label=<name>, what the pass did:
+            // "Cra sleepTabs[<name>] candidates=… asked=… held=… waiting=…" on stdout.
             if let s = dict["sleepTabs"].flatMap(Double.init) {
-                for w in mainWindows { w.browsers.sleepIdleTabs(TabSleepPolicy(hiddenFor: s, keepsRecentTabs: false)) }
+                for w in mainWindows {
+                    let sweep = w.browsers.sleepIdleTabs(TabSleepPolicy(hiddenFor: s, keepsRecentTabs: false))
+                    if let label = dict["label"] {
+                        NSLog("Cra sleepTabs[%@] candidates=%ld asked=%ld held=%ld waiting=%ld", label,
+                              sweep.candidates, sweep.asked, sweep.held, sweep.waiting)
+                    }
+                }
                 return
             }
             // One memory-pressure sweep as if macOS reported this level (warning, critical), without

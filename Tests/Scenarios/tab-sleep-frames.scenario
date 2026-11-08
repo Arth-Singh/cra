@@ -1,11 +1,12 @@
-# Text the user typed into a page's iframe keeps the tab awake, as text in the page itself does
-# (tab-sleep-probe.scenario, #32). The sleep probe read only the top frame's record of typing, so a
-# draft in an embedded editor or comment box let the tab sleep and lose it. The pages are page.html
-# in iframes of itself: ?frame=N (same origin, N deep) and ?xframe=1 (localhost: another site, out
-# of process). Typing is DevTools' Input.insertText, which goes to the focused frame. Before each
-# sleep pass, Cra's isolated world shows where the typing was recorded (each frame has its own
-# __cra). expect-log and reject-log read the whole log, and the lines name only the host, so the
-# rows that sleep come first and the one that holds comes last.
+# Text the user typed into a field in a same-origin iframe keeps the tab awake, as text in the page
+# itself does (tab-sleep-probe.scenario, #32). The sleep probe read only the top frame's record of
+# typing, so a draft in an embedded form or comment box let the tab sleep and lose it. The pages
+# are page.html in iframes of itself: ?frame=N (same origin, N deep), ?xframe=1 (localhost: another
+# site, out of process) and ?openframe=1 (an editor written with document.open). Typing is
+# DevTools' Input.insertText, which goes to the focused frame. Before each sleep pass, Cra's
+# isolated world shows where the typing was recorded (each frame has its own __cra), and each pass
+# says what it did (sleepTabs label). expect-log and reject-log read the whole log, and the tab
+# sleep lines name only the host, so the rows that sleep come first and the one that holds is last.
 budget rss=900 stalls50=30
 pace 0.5
 
@@ -20,7 +21,8 @@ expect-log Cra isolatedJS → .*"value":"records:top0,frame0"
 cra://open?url=${PAGE}?n=front
 expect-log loaded 127\.0\.0\.1
 wait 2
-cra://debug?sleepTabs=1
+cra://debug?sleepTabs=1&label=scripted
+expect-log Cra sleepTabs\[scripted\] candidates=1 asked=1 held=0 waiting=0
 expect-log tab sleep (unloads|discards)( \(its renderer ended\))? 127\.0\.0\.1
 reject-log tab sleep keeps 127\.0\.0\.1 awake
 
@@ -39,7 +41,30 @@ expect-log Cra cdp Runtime.evaluate .*"value":"scripts:false,value:a cross-site 
 cra://open?url=${PAGE}?n=front2
 expect-log loaded 127\.0\.0\.1
 wait 2
-cra://debug?sleepTabs=1
+cra://debug?sleepTabs=1&label=xframed
+expect-log Cra sleepTabs\[xframed\] candidates=2 asked=2 held=0 waiting=0
+reject-log tab sleep keeps 127\.0\.0\.1 awake
+
+# Known gap, kept on purpose: an editor that a page writes with document.open/write/close into a
+# src-less iframe after it loaded (as TinyMCE's iframe mode and CKEditor 4 do). document.open
+# removes every listener on the frame's document and window, Cra's capture 'input' one too, and
+# Cra's script doesn't run again: its __cra is there, but nothing records the typing, and the tab
+# still sleeps. When this row fails because the tab stays awake, the gap is closed.
+cra://open?url=${PAGE}?n=editor%26openframe=1
+expect-log loaded 127\.0\.0\.1
+wait 2
+cra://debug?cdp=Runtime.evaluate&params={"expression":"(d=>{d.body.focus();return 'editor focused:'+d.activeElement.tagName+','+document.activeElement.tagName+','+d.title})(document.querySelector('iframe').contentDocument)"}
+expect-log Cra cdp Runtime.evaluate .*"value":"editor focused:BODY,IFRAME,editor"
+cra://debug?cdp=Input.insertText&params={"text":"an editor draft"}
+cra://debug?cdp=Runtime.evaluate&params={"expression":"'editor typed:'+document.querySelector('iframe').contentDocument.body.textContent"}
+expect-log Cra cdp Runtime.evaluate .*"value":"editor typed:an editor draft"
+cra://debug?isolatedJS='editor records:top'+window.__cra.typed.size+',frame'+(frames[0].__cra?frames[0].__cra.typed.size:'none')
+expect-log Cra isolatedJS → .*"value":"editor records:top0,frame0"
+cra://open?url=${PAGE}?n=front3
+expect-log loaded 127\.0\.0\.1
+wait 2
+cra://debug?sleepTabs=1&label=editor
+expect-log Cra sleepTabs\[editor\] candidates=2 asked=2 held=0 waiting=0
 reject-log tab sleep keeps 127\.0\.0\.1 awake
 
 # Text typed into a field two same-origin frames deep: the tab stays awake. The probe walks the
@@ -54,8 +79,9 @@ cra://debug?cdp=Runtime.evaluate&params={"expression":"'typed:'+document.querySe
 expect-log Cra cdp Runtime.evaluate .*"value":"typed:a draft"
 cra://debug?isolatedJS='records:top'+window.__cra.typed.size+',frame'+frames[0].__cra.typed.size+',nested'+frames[0][0].__cra.typed.size
 expect-log Cra isolatedJS → .*"value":"records:top0,frame0,nested1"
-cra://open?url=${PAGE}?n=front3
+cra://open?url=${PAGE}?n=front4
 expect-log loaded 127\.0\.0\.1
 wait 2
-cra://debug?sleepTabs=1
+cra://debug?sleepTabs=1&label=nested
+expect-log Cra sleepTabs\[nested\] candidates=2 asked=2 held=0 waiting=0
 expect-log tab sleep keeps 127\.0\.0\.1 awake: typed
