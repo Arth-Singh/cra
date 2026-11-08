@@ -126,6 +126,9 @@ final class LittleWindowController: NSWindowController, NSWindowDelegate, @preco
     let actions = LittleWindowActions()
     let commandBar: CommandBarController
     private(set) var browser: CraBrowser?
+    /// How this window opened, for cra://debug?littleTiming=1; nil for a Peek, a popup host and
+    /// a window Cra opens itself (features.md #2).
+    private var openTiming: LittleWindowOpenTiming?
     /// The page (a video) is in element fullscreen.
     private var pageFullscreen = false
     private let shell: LittleShellView
@@ -172,8 +175,9 @@ final class LittleWindowController: NSWindowController, NSWindowDelegate, @preco
     /// `opener` is the page a link or popup came from; `fromTab` the tab a Peek came from.
     /// `space` is the space a cra://open asked for (#168).
     init(app: AppDelegate, url: String?, peekOver parent: MainWindowController? = nil, opener: CraBrowser? = nil, fromTab: UUID? = nil,
-         space: UUID? = nil) {
+         space: UUID? = nil, timing: LittleWindowOpenTiming? = nil) {
         self.app = app
+        openTiming = timing
         isPopupHost = url == nil
         isPeek = parent != nil
         peekParent = parent
@@ -273,8 +277,10 @@ final class LittleWindowController: NSWindowController, NSWindowDelegate, @preco
             state.profileID = app.store.isIncognito(space: sid) ? nil : app.store.profile(app.store.space(sid)?.profileID)?.id
         }
         // Chromium, or WebKit for a DRM service; a popup host takes its opener's engine.
+        openTiming?.mark(.makeStart)
         let b = PageEngines.makeBrowser(frame: shell.page.bounds, url: url.map { $0.isEmpty ? "about:blank" : $0 }, delegate: self,
                                         incognito: false, profilePath: app.store.profilePath(profile: state.profileID), opener: opener)
+        openTiming?.mark(.makeEnd)
         attach(b)
         state.url = (url == "about:blank" ? "" : url) ?? ""
     }
@@ -393,6 +399,8 @@ final class LittleWindowController: NSWindowController, NSWindowDelegate, @preco
     /// full frame in about 120 ms (content laid out at full size, no fade).
     func show() {
         guard let window else { return }
+        openTiming?.mark(.showStart)
+        defer { openTiming?.mark(.showEnd) }
         let final = window.frame
         let mouse = NSEvent.mouseLocation
         var start = NSRect(x: mouse.x - 24, y: mouse.y - 15, width: 48, height: 30)
@@ -416,6 +424,33 @@ final class LittleWindowController: NSWindowController, NSWindowDelegate, @preco
         // A popup host has no URL until Chromium navigates it, but it is a page
         // all the same: the command bar would cover a sign-in popup.
         if hasPage || isPopupHost { focusPage() } else { openCommandBar() }
+    }
+
+    // MARK: Open timing (features.md #2)
+
+    /// cra://debug?littleTiming=1: how this window opened, step by step, with the page's own
+    /// navigation start and first paint. A page that doesn't answer in 4 s logs "-" for those.
+    func logOpenTiming() {
+        guard let timing = openTiming else {
+            NSLog("Cra little timing: not timed (a Peek, a popup or a window Cra opened itself)")
+            return
+        }
+        guard let browser, browser.isCreated, !browser.isClosed else {
+            NSLog("%@", timing.readout(page: nil))
+            return
+        }
+        let params = try? JSONSerialization.data(withJSONObject: ["expression": LittleWindowPagePaint.script, "returnByValue": true,
+                                                                  "awaitPromise": true])
+        var answered = false
+        let finish: (LittleWindowPagePaint?) -> Void = { page in
+            guard !answered else { return }
+            answered = true
+            NSLog("%@", timing.readout(page: page))
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4) { finish(nil) }
+        browser.sendDevToolsMethod("Runtime.evaluate", params: params.flatMap { String(data: $0, encoding: .utf8) } ?? "{}") { result, _ in
+            DispatchQueue.main.async { finish(result.flatMap(LittleWindowPagePaint.init(devToolsResult:))) }
+        }
     }
 
     // MARK: Peek
@@ -1066,6 +1101,7 @@ final class LittleWindowController: NSWindowController, NSWindowDelegate, @preco
     }
 
     func browser(_ browser: CraBrowser, didChangeLoading loading: Bool, canGoBack: Bool, canGoForward: Bool) {
+        if loading { openTiming?.mark(.loadingStart) }
         state.isLoading = loading
         state.canGoBack = canGoBack
         state.canGoForward = canGoForward
@@ -1156,6 +1192,7 @@ final class LittleWindowController: NSWindowController, NSWindowDelegate, @preco
     func devToolsHostView(for browser: CraBrowser) -> NSView? { nil }
     func browser(_ browser: CraBrowser, didCreateDevToolsView view: NSView) {}
     func browser(_ browser: CraBrowser, didCreateHostWindow window: NSWindow) {
+        openTiming?.mark(.hostWindow)
         attachHostWindow(window)
         if hasPage || isPopupHost, self.window?.isKeyWindow == true || window.isKeyWindow { focusPage() }
     }

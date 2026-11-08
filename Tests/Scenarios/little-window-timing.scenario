@@ -1,0 +1,26 @@
+# features.md #2: cra://debug?littleTiming=1 reads how the newest Little Window opened, step by
+# step: when Cra made its page, got its window (Chrome hosting), showed it and started loading,
+# then the page's own navigation start and paints. make_to_nav is what a page made ahead of time
+# would save. Paint fields can be "-" where the window isn't on screen (a locked Mac), so only the
+# app's steps and the page's answer (nav_start) must be there.
+budget rss=900 stalls50=40
+pace 0.5
+
+cra://debug?littleTiming=1
+expect-log Cra little timing: no Little Window
+
+# A link the way the command file (and so another app's cra://open) sends it.
+cra://open?url=${PAGE}?n=timed&little=1
+wait 3
+cra://debug?littleTiming=1
+expect-log Cra little timing: source=cra-open make_start=[0-9.]+ make=[0-9.]+ host_window=\S+ show_start=[0-9.]+ show=[0-9.]+ loading=[0-9.]+ nav_start=[0-9.]+ make_to_nav=-?[0-9.]+ nav_to_paint=\S+ first_paint=\S+ fcp=\S+ visible=[01] url=http://127\.0\.0\.1:[0-9]+/.*n=timed
+cra://action/closeTab
+wait 1
+
+# A Little Window Cra opens itself (⌥⌘N) has no request to time.
+cra://action/newLittleWindow
+wait 1
+cra://debug?littleTiming=1
+expect-log Cra little timing: not timed
+cra://dismiss
+cra://debug?checkStore=1

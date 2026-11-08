@@ -333,12 +333,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
 
     @objc private func handleGetURLEvent(_ event: NSAppleEventDescriptor, reply: NSAppleEventDescriptor) {
         guard let s = event.paramDescriptor(forKeyword: AEKeyword(keyDirectObject))?.stringValue else { return }
-        if bootstrapped { openExternalURL(s) } else { pendingURLs.append(s) }
+        if bootstrapped { openExternalURL(s, timing: .request("geturl")) } else { pendingURLs.append(s) }
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {
         for u in urls {
-            if bootstrapped { openExternalURL(u.absoluteString) } else { pendingURLs.append(u.absoluteString) }
+            if bootstrapped { openExternalURL(u.absoluteString, timing: .request("open-urls")) } else { pendingURLs.append(u.absoluteString) }
         }
     }
 
@@ -397,7 +397,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
     }
 
-    func openExternalURL(_ url: String) {
+    /// `timing`: when the request came in, for a Little Window's open readout (cra://debug?littleTiming=1).
+    func openExternalURL(_ url: String, timing: LittleWindowOpenTiming? = nil) {
         if let u = URL(string: url), u.scheme?.lowercased() == "cra" {
             if Self.isUserFacing(u) || UserDefaults.standard.bool(forKey: "scriptingURLs") {
                 handleInternalURL(u)
@@ -412,7 +413,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         // ("Links from other apps open in Little Arc").
         switch store.settings.destination(forExternalURL: url) {
         case .littleWindow:
-            openLittleWindow(url: url)
+            openLittleWindow(url: url, timing: timing)
             return
         case .space(let id) where store.space(id) != nil:
             store.createTab(url: url, in: id, select: true)
@@ -726,16 +727,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
 
     /// Creates a little window without showing it (`url` nil = popup host).
-    func makeLittleWindow(url: String?, opener: CraBrowser? = nil, space: UUID? = nil) -> LittleWindowController {
+    func makeLittleWindow(url: String?, opener: CraBrowser? = nil, space: UUID? = nil, timing: LittleWindowOpenTiming? = nil) -> LittleWindowController {
         leaveMenuBarForWindow()
-        let w = LittleWindowController(app: self, url: url, opener: opener, space: space)
+        let w = LittleWindowController(app: self, url: url, opener: opener, space: space, timing: timing)
         littleWindows.append(w)
         return w
     }
 
     @discardableResult
-    func openLittleWindow(url: String, activate: Bool = true, opener: CraBrowser? = nil, space: UUID? = nil) -> LittleWindowController {
-        let w = makeLittleWindow(url: url, opener: opener, space: space)
+    func openLittleWindow(url: String, activate: Bool = true, opener: CraBrowser? = nil, space: UUID? = nil,
+                          timing: LittleWindowOpenTiming? = nil) -> LittleWindowController {
+        let w = makeLittleWindow(url: url, opener: opener, space: space, timing: timing)
         if activate { w.show() } else { w.orderFrontInBackground() }
         return w
     }
@@ -822,7 +824,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             // or incognito one opens where it did before, in the space in use.
             let space = q("space").flatMap(UUID.init(uuidString:)).flatMap { store.space($0) != nil && !store.isIncognito(space: $0) ? $0 : nil }
             if little {
-                openLittleWindow(url: url, space: space)
+                openLittleWindow(url: url, space: space, timing: .request("cra-open"))
             } else if let space {
                 // Held: useNormalWindow(forSpace:) can change which window is main.
                 let target = useNormalWindow(forSpace: space)
@@ -868,6 +870,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             for item in comps?.queryItems ?? [] { if let v = item.value { dict[item.name] = v } }
             if let js = dict["devtoolsjs"] { main.debugRunInDevTools(js) }
             if dict["embedDump"] != nil { NSLog("%@", main.embeddedPagesDump()); return }
+            // littleTiming=1: how the newest Little Window opened, step by step (features.md #2).
+            if dict["littleTiming"] != nil {
+                if let w = littleWindows.last { w.logOpenTiming() } else { NSLog("Cra little timing: no Little Window") }
+                return
+            }
             // Tests that leave the pointer alone: scroll=dy,steps,x,y scrolls the scroll view at a
             // point of the main window (from its top left); swipe=dx,steps plays a space swipe.
             if let g = dict["scroll"]?.split(separator: ",").compactMap({ Double($0) }), g.count == 4, let w = main.window {
