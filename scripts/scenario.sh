@@ -1,9 +1,9 @@
 #!/bin/bash
 # Drives the real Cra.app through a user journey (Tests/Scenarios/<name>.scenario) on a
 # throwaway profile, behind your other windows, then checks the same invariants for every
-# scenario: still running, never the front app, no new crash report, no fault in cra.log, the sidebar sound,
-# main-thread stalls and memory inside the scenario's budget, helper processes back to
-# baseline after tabs close, and a clean quit. Never asserts on pixels.
+# scenario: still running, never the front app, no new crash report, no fault in cra.log, the
+# sidebar sound, main-thread stalls and memory inside the scenario's budget, helper processes
+# back to baseline after tabs close, and a clean quit. Never asserts on pixels.
 #
 #   scripts/scenario.sh fifty-tabs        one scenario
 #   scripts/scenario.sh all               every scenario, one after another
